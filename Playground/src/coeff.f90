@@ -20,7 +20,7 @@ module coeff
 contains
 
 
-  function element(lt_endpt,rt_endpt,leg_degree)
+  function element(lt_endpt,rt_endpt)
 !==================================================================================================================
 ! Inputs: - lt_endpt   : location of the left endpoint of 
 !                        the given sub-interval
@@ -34,12 +34,13 @@ contains
 !           the given subinterval
 !==================================================================================================================
     real(dp), intent(in) :: lt_endpt, rt_endpt
-    integer, intent(in) :: leg_degree
+    !integer, intent(in) :: leg_degree
     real(dp), dimension(0:leg_degree) :: temp_array, leg_nodes, leg_weights, fun_vals 
     integer :: i
 
     !Declare our quad_1d element and allocate its memory
     type(quad_1d) :: element
+    
     element%q=leg_degree
     element%lt_endpt = lt_endpt
     element%rt_endpt = rt_endpt
@@ -52,7 +53,7 @@ contains
     end do
 
     !Generate quadrature weights and nodes
-    call lglnodes(leg_nodes,leg_weights,leg_degree)
+    !call lglnodes(leg_nodes,leg_weights,leg_degree)
 
     !Evaluate the given function at each quadrature node (here the nodes are mapped to the current
     !interval and passed into function_eval to save memory). The function can be modified in InputControl.f90

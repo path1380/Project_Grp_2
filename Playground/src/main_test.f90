@@ -20,6 +20,7 @@ program main
   use lgl
   use quad_1dmod
   use type_defs
+  use coeff
   implicit none
 
 !================================================================================================================
@@ -38,14 +39,12 @@ program main
 !
 !===============================================================================================================
 
-  integer :: leg_degree
-  real(dp), dimension(:), allocatable :: leg_nodes, leg_weights
 
   leg_degree = 5
 
-  allocate(leg_nodes(0:leg_degree), leg_weights(0:leg_degree))
-
   call lglnodes(leg_nodes, leg_weights, leg_degree)
+
+  call element(-1.0_dp,1.0_dp)
 
 !===============================================================================================================
 !
@@ -53,8 +52,6 @@ program main
 !
 !===============================================================================================================
 
-
-  deallocate(leg_nodes, leg_weights)
 
 
   write(*,*) -4*ATAN(-1.0_dp)

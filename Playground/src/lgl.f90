@@ -1,7 +1,9 @@
 module lgl
   use type_defs
   implicit none
-contains  
+  integer :: leg_degree
+  real(dp), dimension(0:5) :: leg_nodes, leg_weights
+contains
 subroutine lglnodes(x,w,n)
   !
   ! 
@@ -50,7 +52,6 @@ subroutine lglnodes(x,w,n)
        xold = x
      
        P(:,1) = 1.d0
-       P(:,2) = x
      
        do  k=2,n
           P(:,k+1)=( dble(2*k-1)*x*P(:,k)-dble(k-1)*P(:,k-1) )/dble(k);
@@ -60,7 +61,7 @@ subroutine lglnodes(x,w,n)
     end do
   
     w=2.d0/(dble(n*n1)*P(:,n1)**2)
+
  
   end subroutine lglnodes
 end module lgl
-
