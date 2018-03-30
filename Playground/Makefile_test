@@ -1,0 +1,29 @@
+# Makefile for Homework 5 main file
+
+FC = gfortran
+LD = gfortran
+F90FLAGS = -fbounds-check -Wall -fbacktrace -g
+FFLAGS = -O3
+SRCS = HelloWorld.f90 hello1.f90 hello2.f90 hello3.f90
+OBJS = $(SRCS:.f90=.o)
+EXEC = HelloWorld.x
+
+
+
+%.o: %.f90
+	$(FC) $(F90FLAGS) -c -o $@ $<
+
+
+.PHONY: clean compile build run
+
+compile: $(OBJS)
+	@echo "Compile done"
+
+build: compile
+	$(FC) -o $(EXEC) $(OBJS)
+ 	
+run: build
+	./$(EXEC)
+
+clean:
+	rm -f $(OBJS) $(EXEC) $*.mod
