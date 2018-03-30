@@ -1,7 +1,14 @@
-!------------------------------------------------------------------------------------------------------------------------------------------------
-!This is a template for the module InputControl. Here we use a perl script to modify specific strings to input different sets of
-!nodes, Legendre degrees, or functions we wish to approximate. 
-!------------------------------------------------------------------------------------------------------------------------------------------------
+!================================================================================================================================================
+! 
+! File: InputControl.f90
+! Brief Description: This is a template for the module InputControl. Here we use a PERL SCRIPT to modify specific strings
+!                    to input different sets of nodes, Legendre degrees, or functions we wish to approximate. 
+! 
+! Detailed Description: Functions contained are:
+!                       - function_eval: This function defines a function function_eval(x) which defines the initial conditions of the 1D problem.
+!                       - var_coeffs: This function defines the coefficient a(x) which is the coefficient of u in the spatial derivative term.
+!
+!================================================================================================================================================
 module InputControl
   use type_defs
   use quad_1dmod
