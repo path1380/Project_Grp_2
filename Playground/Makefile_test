@@ -2,28 +2,30 @@
 
 FC = gfortran
 LD = gfortran
+SRC = src
+BIN = bin
 F90FLAGS = -fbounds-check -Wall -fbacktrace -g
 FFLAGS = -O3
-SRCS = HelloWorld.f90 hello1.f90 hello2.f90 hello3.f90
-OBJS = $(SRCS:.f90=.o)
-EXEC = HelloWorld.x
-
-
-
-%.o: %.f90
-	$(FC) $(F90FLAGS) -c -o $@ $<
-
+_SRCS = type_defs.f90 quad_1dmod.f90 lgl.f90 leg_funs.f90 InputControl.f90 approx_funs.f90 coeff.f90 main_test.f90
+SRCS = $(patsubst %,$(SRC)/%,$(_SRCS))
+_OBJS = $(_SRCS:.f90=.o)
+OBJS = $(patsubst %,$(BIN)/%,$(_OBJS))
+EXECUTABLE = test.x
+# EXECUTABLE = test_pis.x
 
 .PHONY: clean compile build run
 
-compile: $(OBJS)
-	@echo "Compile done"
+compile:
+	$(FC) $(FFLAGS) -c $(SRCS)
+	mv *.mod $(BIN)
+	mv *.o $(BIN)
 
-build: compile
-	$(FC) -o $(EXEC) $(OBJS)
- 	
-run: build
-	./$(EXEC)
+build: $(OBJS)
+	$(LD) -o $(EXECUTABLE) $(OBJS)
 
+run: $(EXECUTABLE)
+	./$(EXECUTABLE)
+	
 clean:
-	rm -f $(OBJS) $(EXEC) $*.mod
+	rm -f $(OBJS) $(EXECUTABLE) $(BIN)/*.mod
+	rm -f *.o *.mod
