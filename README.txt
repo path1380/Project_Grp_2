@@ -17,7 +17,7 @@ The standard to be used is:
 
 Points to be noted:
 
--> The 'Makefile' file is used to test the different features of the code. We have 4 .PHONY commands:
+-> The 'Makefile_test' file is used to test the different features of the code. We have 4 .PHONY commands:
 (a) make compile -f <Makefile_name> : This command compiles the code.
 (b) make build -f <Makefile_name> : This command builds the code.
 (c) make run -f <Makefile_name> : This command runs the code.
@@ -30,3 +30,10 @@ Points to be noted:
    would be given to 'InputControl.f90'. Thus, templates for these 2 files will be made.
 
    (The problem is that certain parameters cannot be directly defined in module files.)
+
+-> The 'Playground' directory is used for testing the code. PLEASE DO NOT TAMPER WITH THE CODE OUTSIDE THE 'Playground'
+   DIRECTORY UNLESS YOU ARE ABSOLUTELY THOROUGHLY CONFIRMEDLY CONVINCED THAT IT WORKS. PLEASE DO THE SMALLEST OF 
+   INCREMENTAL TESTING IN THIS DIRECTORY ONLY. USE THE MAIN REPO DIRECTORY FOR MAIN PROGRAM EXECUTION, POST-PROCESSING 
+   AND STUFF OTHER THAN TESTING. Studying the results is an important part of our project and we need this provision
+   to do this without interruption. If we find that something is wrong with the code during post-processing, Git's
+   got our back!
