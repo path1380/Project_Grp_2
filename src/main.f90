@@ -15,10 +15,9 @@
 !================================================================================================================
 
 program main
-  use InputControl
-  use leg_funs
-  use lgl
-  use quad_1dmod
+  use problemsetup
+  use legendre_module
+  use quad_element
   use type_defs
   implicit none
 
