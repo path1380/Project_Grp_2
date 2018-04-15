@@ -2,10 +2,10 @@ module problemsetup
   use type_defs
   implicit none
   integer, parameter :: nvar = 1
-  integer, parameter :: q = 1
+  integer, parameter :: q = 3
   integer, parameter :: nint = 10
   !number of intervals in theta and r
-  integer, parameter :: nt = 2, nr = 2
+  integer, parameter :: nt = 1, nr = 1
   real(kind = dp), parameter :: CFL = 0.1d0
   real(kind = dp), parameter :: tend = 1.d0
   real(kind = dp) :: bc(10:99,nvar)
@@ -18,28 +18,45 @@ contains
 
   subroutine set_bc
     implicit none
-    !
     ! This routine is used to set boundary conditions
     ! on boundary curve xx
     !
     ! Default is Dirichlet for all boundaries.
-    bc = 1.d0
-    ! DEAA: FILL IN
-
+    bc = 0.d0
+    !Here we will eventually wish to implement radiating
+    !boundary conditions
   end subroutine set_bc
 
   real(kind = dp) function init_u(x,y)
+  !This subroutine returns the desired
+  !initial condition/data for the problem
+  !we wish to solve.
+  !Inputs:
+  !   - x  : x coordinate in physical space 
+  !   - y  : y coordinate in physical space 
     use type_defs
     implicit none
     real(kind = dp) :: x,y
-    real(kind = dp), parameter :: pi = acos(-1.d0)
+    ! real(kind = dp), parameter :: pi = acos(-1.d0)
     !init_u = sin(2.d0*pi*x)*sin(2.d0*pi*y)
-    init_u = x*y + 2.0_dp
+    init_u = 0.25_dp*(x**2.0_dp + y**2.0_dp)
     return
-    ! DEAA: Change to fit with your problem
   end function init_u
 
   subroutine pis(xy,s,xy_start,xy_end,curve_type)
+  !This subroutine computes the metric for a specified
+  !geometry. If curvilinear elements are used, 
+  !the Gordon-Hall mapping is used to create the metric.
+  !Inputs:
+  !   - s           : parameterization variable 
+  !   - xy_start    : physical space starting coordinate 
+  !   - xy_end      : physical space ending coordinate 
+  !   - curve_type  : Integer specifying the curve type
+  !                   (see below) 
+  !Outputs:
+  !   - xy          : x coordinate in physical space 
+
+
     use type_defs
     implicit none
     real(kind=dp) :: xy(2),xy_start(2),xy_end(2),s

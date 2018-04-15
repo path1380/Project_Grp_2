@@ -1,29 +1,6 @@
 module legendre_module
 
 contains
-!!$  real(kind = dp) function cheb(x,n)
-!!$    use doubleprecision
-!!$    implicit none
-!!$    integer :: n
-!!$    real(kind = dp) :: x
-!!$    cheb = cos(real(n,dp)*acos(x))
-!!$    return
-!!$  end function cheb
-!!$
-!!$  real(kind = dp) function dercheb(x,n)
-!!$    use doubleprecision
-!!$    implicit none
-!!$    integer :: n
-!!$    real(kind = dp) :: x,t
-!!$    t = acos(x);
-!!$    if (abs(sin(t)).gt.1.0d-13) then
-!!$       dercheb = real(n,dp)*sin(real(n,dp)*t)/sin(t)
-!!$    else
-!!$       dercheb = (x)**(n+1)*real(n,dp)**2
-!!$    end if
-!!$    return
-!!$  end function dercheb
-
   real(kind = dp) function legendre(x,n)
     use type_defs
     implicit none
