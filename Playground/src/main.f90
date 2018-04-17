@@ -14,15 +14,25 @@
 !
 !================================================================================================================
 
+!TEMP_STEP
+!Here we are trying to solve the equation ut + ux = 0 on the 2D domain [0,1]^2. Dirichlet BC u(0,y,t) = 0 and IC
+!u(x,y,0) = u_init(x,y)
+
 program main
   use problemsetup
   use legendre_module
   use quad_element
   use type_defs
-  use coeff2d
   implicit none
 
+  real(kind=dp) :: qnodes(0:nint),weights(0:nint)
+  type(quad) :: qd
 
-  write(*,*) -4*ATAN(-1.0_dp)
-  write(*,*) exp(1.0_dp)
+  integer :: i,j,n_gll
+
+  call allocate_quad(qd,q,nint,1)
+  
+  n_gll = nint+1
+
+  write(*,*) nx,ny
 end program main
