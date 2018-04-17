@@ -2,10 +2,11 @@ module problemsetup
   use type_defs
   implicit none
   integer, parameter :: nvar = 1
-  integer, parameter :: q = 3
+  integer, parameter :: q = 1
   integer, parameter :: nint = 10
-  !number of intervals in theta and r
-  integer, parameter :: nt = 1, nr = 1
+
+  !number of elements along each direction
+  integer, parameter :: nelemx = 1, nelemy = 1
   real(kind = dp), parameter :: CFL = 0.1d0
   real(kind = dp), parameter :: tend = 1.d0
   real(kind = dp) :: bc(10:99,nvar)
@@ -39,7 +40,8 @@ contains
     real(kind = dp) :: x,y
     ! real(kind = dp), parameter :: pi = acos(-1.d0)
     !init_u = sin(2.d0*pi*x)*sin(2.d0*pi*y)
-    init_u = 0.25_dp*(x**2.0_dp + y**2.0_dp)
+    ! init_u = 0.25_dp*(x**2.0_dp + y**2.0_dp)
+    init_u = 1.0_dp
     return
   end function init_u
 

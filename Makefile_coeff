@@ -6,6 +6,7 @@ SRC = src
 BIN = bin
 F90FLAGS = -fbounds-check -Wall -fbacktrace -g
 FFLAGS = -O3
+LDFLAGS= -llapack -lblas
 _OBJECTS = type_defs.o quad_element.o legendre_module.o problemsetup.o weights.o coeff2d.o
 OBJECTS = $(patsubst %,$(BIN)/%,$(_OBJECTS))
 EXECUTABLE = coeff2d.x
@@ -13,7 +14,7 @@ EXECUTABLE = coeff2d.x
 
 .PHONY: clean
 $(EXECUTABLE): $(OBJECTS)
-	       $(LD) -o $(EXECUTABLE) $(OBJECTS) -I$(BIN)/ -llapack
+	       $(LD) -o $(EXECUTABLE) $(OBJECTS) -I$(BIN)/ $(LDFLAGS)
 $(BIN)/%.o : $(SRC)/%.f90
 	   $(FC) $(F90FLAGS) -c -o $@ $< -J$(BIN)/
 $(BIN)/%.o : $(SRC)/%.f

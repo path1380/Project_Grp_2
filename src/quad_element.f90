@@ -54,7 +54,7 @@ module quad_element
      !%% Information of the approximation
      integer :: q, nvar
      real(kind=dp), dimension(:,:,:), allocatable :: u,fu
-     real(kind=dp), dimension(:,:),   allocatable :: M,S
+     real(kind=dp), dimension(:,:),   allocatable :: M,S,Diff_x,Diff_y
      ! For LAPACK, if needed
      integer,       dimension(:),   allocatable :: IPIV
 
@@ -83,6 +83,9 @@ contains
     ! allocate(qd%M(q**2*nvar,q**2*nvar))
     allocate(qd%M(0:(q+1)**2*nvar-1,0:(q+1)**2*nvar-1))
     allocate(qd%S(0:(q+1)**2*nvar-1,0:(q+1)**2*nvar-1))
+    allocate(qd%Diff_x(0:(q+1)**2*nvar-1,0:(q+1)**2*nvar-1))
+    allocate(qd%Diff_y(0:(q+1)**2*nvar-1,0:(q+1)**2*nvar-1))
+
     ! allocate(qd%S(q**2*nvar,q**2*nvar))
     allocate(qd%IPIV(0:(q+1)**2*nvar-1 )) !
 

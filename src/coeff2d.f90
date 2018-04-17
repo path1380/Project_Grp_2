@@ -17,11 +17,12 @@ program coeff2d
 
   ! list of all elements
   type(quad) :: qds
-  integer :: i,j,ind, n_gll, k, l
-  integer :: num_quads
+  integer :: i,j,ind, n_gll, k, l, INFO, step
+  integer :: num_quads, sz1, sz2
   real(kind=dp) :: weights(0:nint), xnodes(0:nint),diffmat(0:nint,0:nint),&
                    leg_mat(0:nint,0:q),leg_der_mat(0:nint,0:q),BFWeights(0:nint,2)
   real(kind=dp) :: true_sol(0:nint,0:nint), approx_sol(0:nint,0:nint)
+  real(kind=dp) :: u_x(0:(q+1)**2-1)
 
   num_quads = 1
   ! Weights for quadrature and differentiation on the elements.
@@ -47,7 +48,8 @@ program coeff2d
   call allocate_quad(qds,q,n_gll,1)
   ind = 1
 
-  !define corners of quad
+  !define corners of quad (here we are on
+  !the reference element)
   qds%xy(1,:) = (/1.0_dp, 1.0_dp/)
   qds%xy(2,:) = (/-1.0_dp, 1.0_dp/)
   qds%xy(3,:) = (/-1.0_dp, -1.0_dp/)
@@ -81,9 +83,37 @@ program coeff2d
     end do 
   end do
 
-  write(*,*) MAXVAL(ABS(true_sol - approx_sol))
+  !build coefficient vector from matrix version
+  do j = 0,q
+    do i =0,q 
+      u_x(i + j*(q+1)) = qds%u(i,j,nvar)
+    end do
+  end do
+
+  ! write(*,*) MAXVAL(ABS(true_sol - approx_sol))
+  ! write(*,*) qds%Diff_x
+  sz2 = (q+1)**2
+  u_x = 1.d0
+  ! u_x(0) = 1.d0
+
+  step = 1
+  ! write(*,*) MATMUL(qds%Diff_x, u_x)
+  qds%Diff_x = 1.d0
+  call DGEMV('N',sz2,sz2,-1.d0,qds%Diff_x,sz2,&
+       u_x,step,0.d0,u_x,step)
+  ! call DGETRS('N',(q+1)**2,1,qds%M,(q+1)**2,qds%IPIV,u_x,(q+1)**2,INFO)
+
+  write(*,*) u_x
+  ! write(*,*) 'Here is the info: ', INFO
+
+
   ! write(*,*) true_sol 
   !evaluate the approximation on the given grid
+
+  !Now that we have the data projected down correctly, let us
+  !attempt to compute derivatives of our initial condition on a
+  !single element.
+
 
   call deallocate_quad(qds)
 
@@ -139,7 +169,7 @@ contains
       end do
 
       !build matrices 
-      CALL assemble(qd,nint,leg_mat,weights) 
+      CALL assemble(qd,nint,leg_mat,leg_der_mat,weights) 
       !here we'll need to backsolve the matrix to find the coefficients
 
       !build the LU decomposition of the mass matrix and 
@@ -300,16 +330,16 @@ contains
 
     end subroutine compute_curve_metric
 
-    subroutine assemble(qd,nint,P,weights)
+    subroutine assemble(qd,nint,P,DERP,weights)
       use type_defs
       use quad_element
       use problemsetup, only : q
       implicit none
       integer :: nint
       type(quad) :: qd
-      real(kind=dp) :: P(0:nint,0:q)! Legendre polys at quadrature nodes
-      !real(kind=dp) :: DERP(0:nint,0:q) ! Legendre and derivative of L. at quadrature nodes
-      real(kind=dp) :: fint(0:nint),weights(0:nint)
+      real(kind=dp) :: P(0:nint,0:q) !Legendre polys at quadrature nodes
+      real(kind=dp) :: DERP(0:nint,0:q) ! Legendre and derivative of L. at quadrature nodes
+      real(kind=dp) :: fint(0:nint),weights(0:nint),fint_x(0:nint),fint_y(0:nint)
       integer :: i,j,k,l,iy,row,col
       !
       ! This routine assembles the mass matrix M
@@ -319,20 +349,37 @@ contains
       !
 
       qd%M(:,:) = 0.0_dp
+      qd%Diff_x(:,:) = 0.0_dp
+      qd%Diff_y(:,:) = 0.0_dp
       do j = 0,q
        do i = 0,q
         row = i + j*(q+1)
-        do l = 0,q
-         do k = 0,q
+        do l = 0,q    !track degree in y direciton
+         do k = 0,q   !track degree in x direction
           col = k + l*(q+1)
           ! Integrate in r for each s
           do iy = 0,nint
            fint(iy) = sum(weights*qd%jac(:,iy)&
              *P(:,i)*P(iy,j)&   ! \phi-part, test
              *P(:,k)*P(iy,l))   !    v-part, trial
+
+           !NEED TO THOROUGHLY CHECK THIS
+           ! fint_x(iy) = sum(weights*qd%jac(:,iy)&
+           !   *P(iy,l)*P(iy,j)*(DERP(iy,i)*P(:,k)*qd%rx(:,iy)+& 
+           !   DERP(:,k)*P(iy,i)*qd%sx(:,iy)))              
+         fint_x(iy) = sum(weights*&
+           qd%jac(:,iy)*&
+           (qd%rx(:,iy)*DERP(:,i)*P(iy,j)&
+           +qd%sx(:,iy)*P(:,i)*DERP(iy,j))*&
+           (qd%rx(:,iy)*DERP(:,k)*P(iy,l)&
+           +qd%sx(:,iy)*P(:,k)*DERP(iy,l)))
           end do
           ! Then integrate in s
           qd%M(row,col) = sum(weights*fint)
+
+          !Manually transpose the matrix
+          qd%Diff_x(row,col) = sum(weights*fint_x)
+          ! qd%Diff_y(row,col) = sum(weights*fint_y)
          end do
         end do
        end do
