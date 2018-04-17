@@ -18,11 +18,11 @@ program coeff2d
   ! list of all elements
   type(quad) :: qds
   integer :: i,j,ind, n_gll, k, l, INFO, step
-  integer :: num_quads, sz1, sz2
+  integer :: num_quads, sz2
   real(kind=dp) :: weights(0:nint), xnodes(0:nint),diffmat(0:nint,0:nint),&
                    leg_mat(0:nint,0:q),leg_der_mat(0:nint,0:q),BFWeights(0:nint,2)
   real(kind=dp) :: true_sol(0:nint,0:nint), approx_sol(0:nint,0:nint)
-  real(kind=dp) :: u_x(0:(q+1)**2-1)
+  real(kind=dp) :: u_x(0:(q+1)**2-1), temp(0:(q+1)**2-1)
 
   num_quads = 1
   ! Weights for quadrature and differentiation on the elements.
@@ -83,6 +83,8 @@ program coeff2d
     end do 
   end do
 
+  write(*,*) MAXVAL(ABS(true_sol - approx_sol))
+  stop 123
   !build coefficient vector from matrix version
   do j = 0,q
     do i =0,q 
@@ -93,23 +95,33 @@ program coeff2d
   ! write(*,*) MAXVAL(ABS(true_sol - approx_sol))
   ! write(*,*) qds%Diff_x
   sz2 = (q+1)**2
-  u_x = 1.d0
-  ! u_x(0) = 1.d0
-
   step = 1
   ! write(*,*) MATMUL(qds%Diff_x, u_x)
-  qds%Diff_x = 1.d0
-  call DGEMV('N',sz2,sz2,-1.d0,qds%Diff_x,sz2,&
-       u_x,step,0.d0,u_x,step)
-  ! call DGETRS('N',(q+1)**2,1,qds%M,(q+1)**2,qds%IPIV,u_x,(q+1)**2,INFO)
+  ! qds%Diff_x = 1.d0
+  call DGEMV('N',sz2,sz2,1.d0,qds%Diff_y,sz2,&
+       u_x,step,0.d0,temp,step)
+  call DGETRS('N',(q+1)**2,1,qds%M,(q+1)**2,qds%IPIV,temp,(q+1)**2,INFO)
 
-  write(*,*) u_x
-  ! write(*,*) 'Here is the info: ', INFO
+  ! write(*,*) qds%Diff_y
+  ! write(*,*) temp
+  ! stop 123
+  !Let us now check the derivative
+  !build true solution on the given grid
+  do j = 0,n_gll-1
+    do i =0,n_gll-1
+      true_sol(i,j) = 12.d0*(qds%x(i,j)**2.d0)*(qds%y(i,j)**3.d0)
 
+      !build approximation
+      approx_sol(i,j) = 0.0_dp
+      do l=0,q
+        do k=0,q 
+          approx_sol(i,j) = approx_sol(i,j) + temp(k + l*(q+1))*leg_mat(i,k)*leg_mat(j,l)
+        end do 
+      end do 
+    end do 
+  end do
 
-  ! write(*,*) true_sol 
-  !evaluate the approximation on the given grid
-
+  write(*,*) MAXVAL(ABS(true_sol - approx_sol))
   !Now that we have the data projected down correctly, let us
   !attempt to compute derivatives of our initial condition on a
   !single element.
@@ -156,8 +168,8 @@ contains
       end do
 
       !build RHS vector b
-      do j = 0, q
-        do i =0,q 
+      do j = 0, q !along s
+        do i =0,q !along r
           row = i + j*(q+1)
           do i2 = 0,nint
             do i1 =0, nint
@@ -176,6 +188,7 @@ contains
       !backsolve for the coefficients
       call DGETRF((q+1)**2,(q+1)**2,qd%M,(q+1)**2,qd%IPIV,INFO)
       call DGETRS('N',(q+1)**2,1,qd%M,(q+1)**2,qd%IPIV,b,(q+1)**2,INFO)
+
       !Reshape and overwrite our quad with the coefficients
       do j = 0,q
         do i =0,q 
@@ -347,7 +360,10 @@ contains
       ! We assume the modes are ordered in column major order with the "1" coordinate first:
       ! u_00,1, u_10,1, u_20,1,..., u_01,1,..., u_qq,1, u_00,2, u_10,2, u_20,2,..., u_01,2,..., u_qq,2....
       !
-
+      ! Assemble Mass and Stiffness matrices
+      ! i,k is index in r. j,l is index in s.
+      ! i,j for phi
+      ! k,l for u
       qd%M(:,:) = 0.0_dp
       qd%Diff_x(:,:) = 0.0_dp
       qd%Diff_y(:,:) = 0.0_dp
@@ -359,27 +375,32 @@ contains
           col = k + l*(q+1)
           ! Integrate in r for each s
           do iy = 0,nint
-           fint(iy) = sum(weights*qd%jac(:,iy)&
-             *P(:,i)*P(iy,j)&   ! \phi-part, test
-             *P(:,k)*P(iy,l))   !    v-part, trial
 
-           !NEED TO THOROUGHLY CHECK THIS
-           ! fint_x(iy) = sum(weights*qd%jac(:,iy)&
-           !   *P(iy,l)*P(iy,j)*(DERP(iy,i)*P(:,k)*qd%rx(:,iy)+& 
-           !   DERP(:,k)*P(iy,i)*qd%sx(:,iy)))              
-         fint_x(iy) = sum(weights*&
-           qd%jac(:,iy)*&
-           (qd%rx(:,iy)*DERP(:,i)*P(iy,j)&
-           +qd%sx(:,iy)*P(:,i)*DERP(iy,j))*&
-           (qd%rx(:,iy)*DERP(:,k)*P(iy,l)&
-           +qd%sx(:,iy)*P(:,k)*DERP(iy,l)))
+           !Mass matrix quadrature in r
+           fint(iy) = sum(weights*qd%jac(:,iy)&
+             *P(:,i)*P(iy,j)&
+             *P(:,k)*P(iy,l))  
+           
+           !Differentiation matrix quadrature in r
+           !Here we diff. in x
+           fint_x(iy) = sum(weights*qd%jac(:,iy)&
+             *P(iy,i)*P(:,j)*(DERP(iy,k)*P(:,l)*qd%rx(:,iy)+& 
+             DERP(:,l)*P(iy,k)*qd%sx(:,iy))) 
+
+           !Differentiation matrix quadrature in r
+           !Here we diff. in y
+           fint_y(iy) = sum(weights*qd%jac(:,iy)&
+             *P(iy,i)*P(:,j)*(DERP(iy,k)*P(:,l)*qd%ry(:,iy)+& 
+             DERP(:,l)*P(iy,k)*qd%sy(:,iy)))   
           end do
+
           ! Then integrate in s
           qd%M(row,col) = sum(weights*fint)
-
-          !Manually transpose the matrix
           qd%Diff_x(row,col) = sum(weights*fint_x)
-          ! qd%Diff_y(row,col) = sum(weights*fint_y)
+          qd%Diff_y(row,col) = sum(weights*fint_y)
+          !Note that if we have to do an integration
+          !by parts, we'll need to transpose and
+          !multiply by 1.
          end do
         end do
        end do

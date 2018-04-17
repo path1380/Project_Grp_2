@@ -2,7 +2,7 @@ module problemsetup
   use type_defs
   implicit none
   integer, parameter :: nvar = 1
-  integer, parameter :: q = 1
+  integer, parameter :: q = 4
   integer, parameter :: nint = 10
 
   !number of elements along each direction
@@ -41,7 +41,7 @@ contains
     ! real(kind = dp), parameter :: pi = acos(-1.d0)
     !init_u = sin(2.d0*pi*x)*sin(2.d0*pi*y)
     ! init_u = 0.25_dp*(x**2.0_dp + y**2.0_dp)
-    init_u = 1.0_dp
+    init_u = 3.d0*x**2.d0*y**4.d0
     return
   end function init_u
 
