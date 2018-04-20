@@ -2,11 +2,11 @@ module problemsetup
   use type_defs
   implicit none
   integer, parameter :: nvar = 1
-  integer, parameter :: q = 4
-  integer, parameter :: nint = 10
+  integer, parameter :: q = 11
+  integer, parameter :: nint = 20
 
   !number of elements along each direction
-  integer, parameter :: nelemx = 1, nelemy = 1
+  integer, parameter :: nelemx = 3, nelemy = 3
   real(kind = dp), parameter :: CFL = 0.1d0
   real(kind = dp), parameter :: tend = 1.d0
   real(kind = dp) :: bc(10:99,nvar)
@@ -23,7 +23,7 @@ contains
     ! on boundary curve xx
     !
     ! Default is Dirichlet for all boundaries.
-    bc = 0.d0
+    bc = 0.0_dp
     !Here we will eventually wish to implement radiating
     !boundary conditions
   end subroutine set_bc
@@ -38,10 +38,10 @@ contains
     use type_defs
     implicit none
     real(kind = dp) :: x,y
-    ! real(kind = dp), parameter :: pi = acos(-1.d0)
-    !init_u = sin(2.d0*pi*x)*sin(2.d0*pi*y)
+    real(kind = dp), parameter :: pi = acos(-1.d0)
+    init_u = sin(pi*x)*sin(pi*y)
     ! init_u = 0.25_dp*(x**2.0_dp + y**2.0_dp)
-    init_u = 3.d0*x**2.d0*y**4.d0
+    ! init_u = 3.d0*x**2.d0*y**4.d0
     return
   end function init_u
 

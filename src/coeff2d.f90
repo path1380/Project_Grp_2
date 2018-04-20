@@ -16,15 +16,19 @@ program coeff2d
   implicit none
 
   ! list of all elements
-  type(quad) :: qds
-  integer :: i,j,ind, n_gll, k, l, INFO, step
+  type(quad), DIMENSION(:), ALLOCATABLE :: qds
+  real(kind=dp), DIMENSION(:), ALLOCATABLE :: err_vec, err_vec_lap
+  real(kind = dp), parameter :: pi = acos(-1.d0)
+
+  integer :: i,j,ind, n_gll, k, l, INFO, step, n, neighbor_ind
   integer :: num_quads, sz2
   real(kind=dp) :: weights(0:nint), xnodes(0:nint),diffmat(0:nint,0:nint),&
                    leg_mat(0:nint,0:q),leg_der_mat(0:nint,0:q),BFWeights(0:nint,2)
   real(kind=dp) :: true_sol(0:nint,0:nint), approx_sol(0:nint,0:nint)
-  real(kind=dp) :: u_x(0:(q+1)**2-1), temp(0:(q+1)**2-1)
+  real(kind=dp) :: u_x(0:(q+1)**2-1), gradx(0:(q+1)**2-1), grady(0:(q+1)**2-1)
+  real(kind=dp) :: temp(0:(q+1)**2-1), hx, hy, lt_x, rt_x, lt_y, rt_y
+  num_quads = nelemx*nelemy
 
-  num_quads = 1
   ! Weights for quadrature and differentiation on the elements.
   call lglnodes(xnodes,weights,nint)
   n_gll = nint + 1
@@ -44,90 +48,269 @@ program coeff2d
    DiffMat(i,:) = BFWEIGHTS(:,2)
   end do
 
-  !allocate our quad
-  call allocate_quad(qds,q,n_gll,1)
-  ind = 1
+  !allocate quad array
+  ALLOCATE(qds(1:num_quads))
+  ALLOCATE(err_vec(1:num_quads))
+  ALLOCATE(err_vec_lap(1:num_quads))
 
-  !define corners of quad (here we are on
-  !the reference element)
-  qds%xy(1,:) = (/1.0_dp, 1.0_dp/)
-  qds%xy(2,:) = (/-1.0_dp, 1.0_dp/)
-  qds%xy(3,:) = (/-1.0_dp, -1.0_dp/)
-  qds%xy(4,:) = (/1.0_dp, -1.0_dp/)
-  !define corners of quad
-  ! qds%xy(1,:) = (/0.3_dp, 2.0_dp/)
-  ! qds%xy(2,:) = (/-0.3_dp, 1.0_dp/)
-  ! qds%xy(3,:) = (/-1.0_dp, -2.0_dp/)
-  ! qds%xy(4,:) = (/0.1_dp, -1.0_dp/)
+  hx = 2.d0/DBLE(nelemx)
+  hy = 2.d0/DBLE(nelemy)
 
-  !insist on straight line boundaries
-  qds%my_ind = ind 
-  qds%bc_type(:) = 10
+  !loop and initialize our quad array
+  do j = 1,nelemy
+    
+    !build corner of quad in y direction
+    lt_y = -1 + DBLE(j-1)*hy
+    rt_y = -1 + DBLE(j)*hy
 
-  !compute and store the metric for the quad
-  call set_metric(qds,xnodes,diffmat,nint)
-  call set_initial_data(qds)
+    do i =1,nelemx
 
-  !build true solution on the given grid
-  do j = 0,n_gll-1
-    do i =0,n_gll-1
-      true_sol(i,j) = init_u(qds%x(i,j),qds%y(i,j))
+      !assign each quad an ID
+      ind = i + (j-1)*nelemx
+      call allocate_quad(qds(ind),q,n_gll,1)
 
-      !build approximation
-      approx_sol(i,j) = 0.0_dp
-      do l=0,q
-        do k=0,q 
-          approx_sol(i,j) = approx_sol(i,j) + qds%u(k,l,nvar)*leg_mat(i,k)*leg_mat(j,l)
-        end do 
-      end do 
-    end do 
-  end do
+      !insist on straight line boundaries
+      qds(ind)%my_ind = ind 
+      qds(ind)%bc_type(:) = 10
 
-  write(*,*) MAXVAL(ABS(true_sol - approx_sol))
-  stop 123
-  !build coefficient vector from matrix version
-  do j = 0,q
-    do i =0,q 
-      u_x(i + j*(q+1)) = qds%u(i,j,nvar)
+      !build corners of current quad in x direction
+      lt_x = -1 + DBLE(i-1)*hx
+      rt_x = -1 + DBLE(i)*hx
+
+      !define corners of quad
+      qds(ind)%xy(1,:) = (/rt_x, rt_y/)
+      qds(ind)%xy(2,:) = (/lt_x, rt_y/)
+      qds(ind)%xy(3,:) = (/lt_x, lt_y/)
+      qds(ind)%xy(4,:) = (/rt_x, lt_y/)
+
+      !compute and store the metric
+      call set_metric(qds(ind),xnodes,diffmat,nint)
+      call set_initial_data(qds(ind))
+
+      !set information about neighbors and boundary 
+      !conditions. NOTE: If instead of a neighbor 
+      !the element has a physical boundary, we let
+      !the value of the neighbor be -2 (later we'll)
+      !replace with MPI_PROC_NULL
+
+      !top neighbor
+      neighbor_ind = ind + nelemx 
+      qds(ind)%nbr(1,:) = (/neighbor_ind, 3/)
+      qds(ind)%bc_type(1) = 1
+
+      !bottom neighbor
+      neighbor_ind = ind - nelemx 
+      qds(ind)%nbr(3,:) = (/neighbor_ind, 1/)
+      qds(ind)%bc_type(3) = 1
+
+      !left neighbor
+      neighbor_ind = ind - 1 
+      qds(ind)%nbr(2,:) = (/neighbor_ind, 4/)
+      qds(ind)%bc_type(2) = 1
+
+      !right neighbor
+      neighbor_ind = ind + 1 
+      qds(ind)%nbr(4,:) = (/neighbor_ind, 2/)
+      qds(ind)%bc_type(4) = 1
+
+      !Default assume no boundary
+      qds(ind)%has_physical_bc = .FALSE.
+
+      ! ====== Account for physical boundaries ====== !
+      
+      !If we are on the bottom row
+      IF( j .eq. 1) THEN
+        !bottom "neighbor" is a boundary
+        qds(ind)%nbr(3,:) = (/-2, 1/)
+        qds(ind)%bc_type(3) = -1
+        qds(ind)%has_physical_bc = .TRUE.
+      END IF
+
+      !If we are on the top row
+      IF( j .eq. nelemy) THEN
+        !top "neighbor" is a boundary
+        qds(ind)%nbr(1,:) = (/-2, 3/)
+        qds(ind)%bc_type(1) = -1
+        qds(ind)%has_physical_bc = .TRUE.
+      END IF
+
+      !If we are on the left column
+      IF( i .eq. 1) THEN
+        !left "neighbor" is a boundary
+        qds(ind)%nbr(2,:) = (/-2, 4/)
+        qds(ind)%bc_type(2) = -1
+        qds(ind)%has_physical_bc = .TRUE.
+      END IF
+
+      !If we are on the right column
+      IF( i .eq. nelemx) THEN
+        !right "neighbor" is a boundary
+        qds(ind)%nbr(4,:) = (/-2, 2/)
+        qds(ind)%bc_type(4) = -1
+        qds(ind)%has_physical_bc = .TRUE.
+      END IF
     end do
-  end do
+  end do 
 
-  ! write(*,*) MAXVAL(ABS(true_sol - approx_sol))
-  ! write(*,*) qds%Diff_x
+
+  !Now let's double check the projection is 
+  !working correctly for multiple elements
+  do n = 1,num_quads
+
+    !build coefficient vector from matrix version
+    do j = 0,q
+      do i =0,q 
+        u_x(i + j*(q+1)) = qds(n)%u(i,j,nvar)
+      end do
+    end do
+
+    !build true solution on the given grid
+    do j = 0,n_gll-1
+      do i =0,n_gll-1
+        true_sol(i,j) = init_u(qds(n)%x(i,j),qds(n)%y(i,j))
+
+        !build approximation
+        approx_sol(i,j) = 0.0_dp
+        do l=0,q
+          do k=0,q 
+            approx_sol(i,j) = approx_sol(i,j) + qds(n)%u(k,l,nvar)*leg_mat(i,k)*leg_mat(j,l)
+          end do 
+        end do 
+      end do
+    end do
+    err_vec(n) = NORM2(true_sol - approx_sol) 
+  end do
+  write(*,*) 'Here is the error for projecting down to Legendre polys: \n'
+  write(*,*) MAXVAL(err_vec)
+
+  !Needed for DGEMV
   sz2 = (q+1)**2
   step = 1
-  ! write(*,*) MATMUL(qds%Diff_x, u_x)
-  ! qds%Diff_x = 1.d0
-  call DGEMV('N',sz2,sz2,1.d0,qds%Diff_y,sz2,&
-       u_x,step,0.d0,temp,step)
-  call DGETRS('N',(q+1)**2,1,qds%M,(q+1)**2,qds%IPIV,temp,(q+1)**2,INFO)
+ 
+  !Now let's compute the Laplacian in each quad
+  do n = 1,num_quads
+    
+    !build coefficient vector from matrix version
+    do j = 0,q
+      do i =0,q 
+        u_x(i + j*(q+1)) = qds(n)%u(i,j,nvar)
+      end do
+    end do
 
-  ! write(*,*) qds%Diff_y
-  ! write(*,*) temp
-  ! stop 123
-  !Let us now check the derivative
-  !build true solution on the given grid
-  do j = 0,n_gll-1
-    do i =0,n_gll-1
-      true_sol(i,j) = 12.d0*(qds%x(i,j)**2.d0)*(qds%y(i,j)**3.d0)
+    !take a single derivative in x
+    call DGEMV('N',sz2,sz2,1.0_dp,qds(n)%Diff_x,sz2,&
+         u_x,step,0.0_dp,gradx,step)
+    call DGETRS('N',(q+1)**2,1,qds(n)%M,(q+1)**2,qds(n)%IPIV,gradx,(q+1)**2,INFO)
+    
+    temp = 0.0_dp
+    !take a second derivative in x
+    call DGEMV('N',sz2,sz2,1.0_dp,qds(n)%Diff_x,sz2,&
+         gradx,step,0.0_dp,temp,step)
+    call DGETRS('N',(q+1)**2,1,qds(n)%M,(q+1)**2,qds(n)%IPIV,temp,(q+1)**2,INFO)
+    gradx = temp
 
-      !build approximation
-      approx_sol(i,j) = 0.0_dp
-      do l=0,q
-        do k=0,q 
-          approx_sol(i,j) = approx_sol(i,j) + temp(k + l*(q+1))*leg_mat(i,k)*leg_mat(j,l)
+    !take a single derivative in y
+    call DGEMV('N',sz2,sz2,1.0_dp,qds(n)%Diff_y,sz2,&
+         u_x,step,0.0_dp,grady,step)
+    call DGETRS('N',(q+1)**2,1,qds(n)%M,(q+1)**2,qds(n)%IPIV,grady,(q+1)**2,INFO)
+    temp = 0.0_dp
+    !take a second derivative in x
+    call DGEMV('N',sz2,sz2,1.0_dp,qds(n)%Diff_y,sz2,&
+         grady,step,0.0_dp,temp,step)
+    call DGETRS('N',(q+1)**2,1,qds(n)%M,(q+1)**2,qds(n)%IPIV,temp,(q+1)**2,INFO)
+    grady = temp
+
+    !Let us now check the derivative
+    !build true solution on the given grid
+    ! true_sol = 1.d0
+    do j = 0,n_gll-1
+      do i =0,n_gll-1
+
+        true_sol(i,j) = -2.0_dp*(pi**2.0_dp)*init_u(qds(n)%x(i,j),qds(n)%y(i,j))
+        !build approximation
+        approx_sol(i,j) = 0.0_dp
+        do l=0,q
+          do k=0,q 
+            approx_sol(i,j) = approx_sol(i,j) + (gradx(k + l*(q+1)) + grady(k + l*(q+1)))*leg_mat(i,k)*leg_mat(j,l)
+          end do 
         end do 
       end do 
-    end do 
+    end do
+    err_vec_lap(n) = NORM2(true_sol - approx_sol)
+    gradx = 0.0_dp
+    grady = 0.0_dp
   end do
 
-  write(*,*) MAXVAL(ABS(true_sol - approx_sol))
-  !Now that we have the data projected down correctly, let us
-  !attempt to compute derivatives of our initial condition on a
-  !single element.
+  write(*,*) 'Here is the error in computing the Laplacian: \n'
+  write(*,*) MAXVAL(err_vec_lap)
 
 
-  call deallocate_quad(qds)
+  !Here we should now have a subroutine that computes the Laplacian 
+  !and here we'll have a time step loop.
+
+  !We have an initial approximation of the Laplacian, now 
+  !we will do a single RK4 time step and see if we can get
+  !that with decent accuracy first. Then we'll time step 
+  !more generally.
+
+  do i = 1,num_quads
+    CALL deallocate_quad(qds(i))
+  end do
+  DEALLOCATE(qds)
+  DEALLOCATE(err_vec)
+
+
+  ! !build coefficient vector from matrix version
+  ! do j = 0,q
+  !   do i =0,q 
+  !     u_x(i + j*(q+1)) = qds(ind)%u(i,j,nvar)
+  !   end do
+  ! end do
+
+  ! sz2 = (q+1)**2
+  ! step = 1
+
+  ! !take a single derivative in x
+  ! call DGEMV('N',sz2,sz2,1.d0,qds(ind)%Diff_x,sz2,&
+  !      u_x,step,0.d0,gradx,step)
+  ! call DGETRS('N',(q+1)**2,1,qds(ind)%M,(q+1)**2,qds(ind)%IPIV,gradx,(q+1)**2,INFO)
+  ! temp = 0.d0
+  ! !take a second derivative in x
+  ! call DGEMV('N',sz2,sz2,1.d0,qds(ind)%Diff_x,sz2,&
+  !      gradx,step,0.d0,temp,step)
+  ! call DGETRS('N',(q+1)**2,1,qds(ind)%M,(q+1)**2,qds(ind)%IPIV,temp,(q+1)**2,INFO)
+  ! gradx = temp
+
+  ! !take a single derivative in y
+  ! call DGEMV('N',sz2,sz2,1.d0,qds(ind)%Diff_y,sz2,&
+  !      u_x,step,0.d0,grady,step)
+  ! call DGETRS('N',(q+1)**2,1,qds(ind)%M,(q+1)**2,qds(ind)%IPIV,grady,(q+1)**2,INFO)
+  ! temp = 0.d0
+  ! !take a second derivative in x
+  ! call DGEMV('N',sz2,sz2,1.d0,qds(ind)%Diff_y,sz2,&
+  !      grady,step,0.d0,temp,step)
+  ! call DGETRS('N',(q+1)**2,1,qds(ind)%M,(q+1)**2,qds(ind)%IPIV,temp,(q+1)**2,INFO)
+  ! grady = temp
+
+  ! !Let us now check the derivative
+  ! !build true solution on the given grid
+  ! true_sol = 1.d0
+  ! do j = 0,n_gll-1
+  !   do i =0,n_gll-1
+  !     ! true_sol(i,j) = 12.d0*(qds%x(i,j)**2.d0)*(qds%y(i,j)**3.d0)
+
+  !     !build approximation
+  !     approx_sol(i,j) = 0.0_dp
+  !     do l=0,q
+  !       do k=0,q 
+  !         approx_sol(i,j) = approx_sol(i,j) + (gradx(k + l*(q+1)) + grady(k + l*(q+1)))*leg_mat(i,k)*leg_mat(j,l)
+  !       end do 
+  !     end do 
+  !   end do 
+  ! end do
+
+  ! write(*,*) MAXVAL(ABS(true_sol - approx_sol))
+  ! call deallocate_quad(qds(ind))
 
 contains
 
@@ -160,6 +343,7 @@ contains
 
       n_gll = nint + 1
       b(:) = 0.0_dp
+
       !evaluate initial condition at nodes
       do j = 0,n_gll-1
         do i =0,n_gll-1
@@ -182,7 +366,6 @@ contains
 
       !build matrices 
       CALL assemble(qd,nint,leg_mat,leg_der_mat,weights) 
-      !here we'll need to backsolve the matrix to find the coefficients
 
       !build the LU decomposition of the mass matrix and 
       !backsolve for the coefficients
@@ -195,7 +378,6 @@ contains
           qd%u(i,j,nvar) = b(i + j*(q+1))
         end do
       end do
-
 
     end subroutine set_initial_data
 
@@ -274,12 +456,15 @@ contains
          end do
       end do
 
+      !Store local coordinates in quad
       qd%x = x_coord_elem
       qd%y = y_coord_elem
 
+      !Compute the derivatives and Jacobian of the metric
       call compute_curve_metric(qd%rx,qd%sx,qd%ry,qd%sy,qd%jac,&
            x_coord_elem,y_coord_elem,Diffmat,nint)
-      ! Compute normals and line elements on all sides
+      
+      ! ======= Compute normals and line elements on all sides ====== !
 
       ! Face 1. corresponds to s = 1 and r \in [-1,1].
       ! Thus the normal is (s_x,s_y) / \sqrt(s_x^2+s_y^2).
@@ -317,9 +502,17 @@ contains
     end subroutine set_metric
 
     subroutine compute_curve_metric(r_x,s_x,r_y,s_y,jac,X,Y,D,n)
-      ! ========================================================  
-      ! Output:   Here we overwrite the appropriate quad 
-      !           arrays with information about the metric.
+      ! ========================================================
+      ! Inputs: - X         : local X coordinates in quadrature
+      !                       grid
+      !         - Y         : local Y coordinates in grid
+      !         - D         : Differentiation matrix given
+      !                       by Bengt Fornberg's weights.f
+      !         - n         : number of intervals given by 
+      !                       xnodes (i.e. # of nodes - 1) 
+      !
+      ! Outputs: Metric information, in particular r_x, s_x,
+      !          r_y, s_y, and the Jacobian of the transformation
       ! ========================================================
       use type_defs
       implicit none
@@ -344,6 +537,22 @@ contains
     end subroutine compute_curve_metric
 
     subroutine assemble(qd,nint,P,DERP,weights)
+      ! ========================================================
+      ! Inputs: - qd         : quad element containing the  
+      !                        information of a given element
+      !         - nint       : number of intervals given by 
+      !                        xnodes (i.e. # of nodes - 1) 
+      !         - P          : matrix containing the evaluation
+      !                        of each Leg poly at the quadrature
+      !                        nodes
+      !         - DERP       : matrix containing the evaluation
+      !                        of derivatives of each Leg poly
+      !         - weights    : array containing the weights 
+      !                        for gaussian quadrature
+      !
+      ! Output:   Build and store the mass and differentiation
+      !           matrices for each element in the grid
+      ! ========================================================
       use type_defs
       use quad_element
       use problemsetup, only : q
@@ -382,13 +591,13 @@ contains
              *P(:,k)*P(iy,l))  
            
            !Differentiation matrix quadrature in r
-           !Here we diff. in x
+           !Here we differentiate in x
            fint_x(iy) = sum(weights*qd%jac(:,iy)&
              *P(iy,i)*P(:,j)*(DERP(iy,k)*P(:,l)*qd%rx(:,iy)+& 
              DERP(:,l)*P(iy,k)*qd%sx(:,iy))) 
 
            !Differentiation matrix quadrature in r
-           !Here we diff. in y
+           !Here we differentiate in y
            fint_y(iy) = sum(weights*qd%jac(:,iy)&
              *P(iy,i)*P(:,j)*(DERP(iy,k)*P(:,l)*qd%ry(:,iy)+& 
              DERP(:,l)*P(iy,k)*qd%sy(:,iy)))   
