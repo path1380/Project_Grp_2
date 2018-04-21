@@ -2,11 +2,11 @@ module problemsetup
   use type_defs
   implicit none
   integer, parameter :: nvar = 1
-  integer, parameter :: q = 11
-  integer, parameter :: nint = 20
+  integer, parameter :: q = 9
+  integer, parameter :: nint = 15
 
   !number of elements along each direction
-  integer, parameter :: nelemx = 3, nelemy = 3
+  integer, parameter :: nelemx = 2, nelemy = 2
   real(kind = dp), parameter :: CFL = 0.1d0
   real(kind = dp), parameter :: tend = 1.d0
   real(kind = dp) :: bc(10:99,nvar)

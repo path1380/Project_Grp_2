@@ -18,17 +18,20 @@ program coeff2d
   ! list of all elements
   type(quad), DIMENSION(:), ALLOCATABLE :: qds
   real(kind=dp), DIMENSION(:), ALLOCATABLE :: err_vec, err_vec_lap
+  real(kind=dp), DIMENSION(:,:,:,:), ALLOCATABLE :: lap
   real(kind = dp), parameter :: pi = acos(-1.d0)
 
-  integer :: i,j,ind, n_gll, k, l, INFO, step, n, neighbor_ind
-  integer :: num_quads, sz2
+  integer :: i,j,ind,n_gll,k,l,INFO,step,n,neighbor_ind
+  integer :: num_quads, sz2, i1, i2
   real(kind=dp) :: weights(0:nint), xnodes(0:nint),diffmat(0:nint,0:nint),&
                    leg_mat(0:nint,0:q),leg_der_mat(0:nint,0:q),BFWeights(0:nint,2)
   real(kind=dp) :: true_sol(0:nint,0:nint), approx_sol(0:nint,0:nint)
-  real(kind=dp) :: u_x(0:(q+1)**2-1), gradx(0:(q+1)**2-1), grady(0:(q+1)**2-1)
-  real(kind=dp) :: temp(0:(q+1)**2-1), hx, hy, lt_x, rt_x, lt_y, rt_y
-  num_quads = nelemx*nelemy
+  ! real(kind=dp) :: u_x(0:(q+1)**2-1), gradx(0:(q+1)**2-1), &
+  !                 grady(0:(q+1)**2-1), temp(0:(q+1)**2-1)
+  real(kind=dp) :: hx, hy, lt_x, rt_x, lt_y, rt_y, lam_max, dt
+  real(dp) :: up(0:q,0:q,nvar,nelemx,nelemy),kstage(0:q,0:q,nvar,nelemx,nelemy,4)
 
+  num_quads = nelemx*nelemy
   ! Weights for quadrature and differentiation on the elements.
   call lglnodes(xnodes,weights,nint)
   n_gll = nint + 1
@@ -52,6 +55,7 @@ program coeff2d
   ALLOCATE(qds(1:num_quads))
   ALLOCATE(err_vec(1:num_quads))
   ALLOCATE(err_vec_lap(1:num_quads))
+  ALLOCATE(lap(0:q,0:q,nelemx,nelemy))
 
   hx = 2.d0/DBLE(nelemx)
   hy = 2.d0/DBLE(nelemy)
@@ -67,10 +71,10 @@ program coeff2d
 
       !assign each quad an ID
       ind = i + (j-1)*nelemx
+      qds(ind)%my_ind = ind 
       call allocate_quad(qds(ind),q,n_gll,1)
 
       !insist on straight line boundaries
-      qds(ind)%my_ind = ind 
       qds(ind)%bc_type(:) = 10
 
       !build corners of current quad in x direction
@@ -157,13 +161,6 @@ program coeff2d
   !working correctly for multiple elements
   do n = 1,num_quads
 
-    !build coefficient vector from matrix version
-    do j = 0,q
-      do i =0,q 
-        u_x(i + j*(q+1)) = qds(n)%u(i,j,nvar)
-      end do
-    end do
-
     !build true solution on the given grid
     do j = 0,n_gll-1
       do i =0,n_gll-1
@@ -178,139 +175,66 @@ program coeff2d
         end do 
       end do
     end do
+    !Calculate L2 error for each quad
     err_vec(n) = NORM2(true_sol - approx_sol) 
   end do
+
+  !print out max L2 error over all quads
   write(*,*) 'Here is the error for projecting down to Legendre polys: \n'
   write(*,*) MAXVAL(err_vec)
+
+  !We'll use this for our first time step
+  lam_max = MAXVAL(ABS(approx_sol))
 
   !Needed for DGEMV
   sz2 = (q+1)**2
   step = 1
  
   !Now let's compute the Laplacian in each quad
-  do n = 1,num_quads
-    
-    !build coefficient vector from matrix version
-    do j = 0,q
-      do i =0,q 
-        u_x(i + j*(q+1)) = qds(n)%u(i,j,nvar)
-      end do
-    end do
+  CALL compute_laplacian(lap,qds)
 
-    !take a single derivative in x
-    call DGEMV('N',sz2,sz2,1.0_dp,qds(n)%Diff_x,sz2,&
-         u_x,step,0.0_dp,gradx,step)
-    call DGETRS('N',(q+1)**2,1,qds(n)%M,(q+1)**2,qds(n)%IPIV,gradx,(q+1)**2,INFO)
-    
-    temp = 0.0_dp
-    !take a second derivative in x
-    call DGEMV('N',sz2,sz2,1.0_dp,qds(n)%Diff_x,sz2,&
-         gradx,step,0.0_dp,temp,step)
-    call DGETRS('N',(q+1)**2,1,qds(n)%M,(q+1)**2,qds(n)%IPIV,temp,(q+1)**2,INFO)
-    gradx = temp
+  !Here we'll double check that the Laplacian operator is working correctly
+  do i2 = 1,nelemy
+    do i1 = 1,nelemx
+      ind = i1 + (i2-1)*nelemx
+      !Let us now check the derivative
+      !build true solution on the given grid
+      do j = 0,n_gll-1
+        do i =0,n_gll-1
 
-    !take a single derivative in y
-    call DGEMV('N',sz2,sz2,1.0_dp,qds(n)%Diff_y,sz2,&
-         u_x,step,0.0_dp,grady,step)
-    call DGETRS('N',(q+1)**2,1,qds(n)%M,(q+1)**2,qds(n)%IPIV,grady,(q+1)**2,INFO)
-    temp = 0.0_dp
-    !take a second derivative in x
-    call DGEMV('N',sz2,sz2,1.0_dp,qds(n)%Diff_y,sz2,&
-         grady,step,0.0_dp,temp,step)
-    call DGETRS('N',(q+1)**2,1,qds(n)%M,(q+1)**2,qds(n)%IPIV,temp,(q+1)**2,INFO)
-    grady = temp
-
-    !Let us now check the derivative
-    !build true solution on the given grid
-    ! true_sol = 1.d0
-    do j = 0,n_gll-1
-      do i =0,n_gll-1
-
-        true_sol(i,j) = -2.0_dp*(pi**2.0_dp)*init_u(qds(n)%x(i,j),qds(n)%y(i,j))
-        !build approximation
-        approx_sol(i,j) = 0.0_dp
-        do l=0,q
-          do k=0,q 
-            approx_sol(i,j) = approx_sol(i,j) + (gradx(k + l*(q+1)) + grady(k + l*(q+1)))*leg_mat(i,k)*leg_mat(j,l)
+          true_sol(i,j) = -2.0_dp*(pi**2.0_dp)*init_u(qds(ind)%x(i,j),qds(ind)%y(i,j))
+          
+          !build approximation
+          approx_sol(i,j) = 0.0_dp
+          do l=0,q
+            do k=0,q 
+              approx_sol(i,j) = approx_sol(i,j) + lap(k,l,i1,i2)*leg_mat(i,k)*leg_mat(j,l)
+            end do 
           end do 
         end do 
-      end do 
-    end do
-    err_vec_lap(n) = NORM2(true_sol - approx_sol)
-    gradx = 0.0_dp
-    grady = 0.0_dp
+      end do
+      err_vec_lap(ind) = NORM2(true_sol - approx_sol)
+    end do 
   end do
 
-  write(*,*) 'Here is the error in computing the Laplacian: \n'
+  write(*,*) 'Here is the error in computing the Laplacian: '
   write(*,*) MAXVAL(err_vec_lap)
-
-
-  !Here we should now have a subroutine that computes the Laplacian 
-  !and here we'll have a time step loop.
 
   !We have an initial approximation of the Laplacian, now 
   !we will do a single RK4 time step and see if we can get
   !that with decent accuracy first. Then we'll time step 
   !more generally.
 
+  dt = CFL*min(hx,hy)/real(q,dp)**2/lam_max
+  write(*,*) dt
+
+
+
   do i = 1,num_quads
     CALL deallocate_quad(qds(i))
   end do
   DEALLOCATE(qds)
   DEALLOCATE(err_vec)
-
-
-  ! !build coefficient vector from matrix version
-  ! do j = 0,q
-  !   do i =0,q 
-  !     u_x(i + j*(q+1)) = qds(ind)%u(i,j,nvar)
-  !   end do
-  ! end do
-
-  ! sz2 = (q+1)**2
-  ! step = 1
-
-  ! !take a single derivative in x
-  ! call DGEMV('N',sz2,sz2,1.d0,qds(ind)%Diff_x,sz2,&
-  !      u_x,step,0.d0,gradx,step)
-  ! call DGETRS('N',(q+1)**2,1,qds(ind)%M,(q+1)**2,qds(ind)%IPIV,gradx,(q+1)**2,INFO)
-  ! temp = 0.d0
-  ! !take a second derivative in x
-  ! call DGEMV('N',sz2,sz2,1.d0,qds(ind)%Diff_x,sz2,&
-  !      gradx,step,0.d0,temp,step)
-  ! call DGETRS('N',(q+1)**2,1,qds(ind)%M,(q+1)**2,qds(ind)%IPIV,temp,(q+1)**2,INFO)
-  ! gradx = temp
-
-  ! !take a single derivative in y
-  ! call DGEMV('N',sz2,sz2,1.d0,qds(ind)%Diff_y,sz2,&
-  !      u_x,step,0.d0,grady,step)
-  ! call DGETRS('N',(q+1)**2,1,qds(ind)%M,(q+1)**2,qds(ind)%IPIV,grady,(q+1)**2,INFO)
-  ! temp = 0.d0
-  ! !take a second derivative in x
-  ! call DGEMV('N',sz2,sz2,1.d0,qds(ind)%Diff_y,sz2,&
-  !      grady,step,0.d0,temp,step)
-  ! call DGETRS('N',(q+1)**2,1,qds(ind)%M,(q+1)**2,qds(ind)%IPIV,temp,(q+1)**2,INFO)
-  ! grady = temp
-
-  ! !Let us now check the derivative
-  ! !build true solution on the given grid
-  ! true_sol = 1.d0
-  ! do j = 0,n_gll-1
-  !   do i =0,n_gll-1
-  !     ! true_sol(i,j) = 12.d0*(qds%x(i,j)**2.d0)*(qds%y(i,j)**3.d0)
-
-  !     !build approximation
-  !     approx_sol(i,j) = 0.0_dp
-  !     do l=0,q
-  !       do k=0,q 
-  !         approx_sol(i,j) = approx_sol(i,j) + (gradx(k + l*(q+1)) + grady(k + l*(q+1)))*leg_mat(i,k)*leg_mat(j,l)
-  !       end do 
-  !     end do 
-  !   end do 
-  ! end do
-
-  ! write(*,*) MAXVAL(ABS(true_sol - approx_sol))
-  ! call deallocate_quad(qds(ind))
 
 contains
 
@@ -615,6 +539,120 @@ contains
        end do
       end do
     end subroutine assemble
+
+    ! subroutine compute_laplacian(lap,qds,leg_mat,weights)
+    subroutine compute_laplacian(lap,qds)
+      ! ========================================================
+      ! Inputs: - qds         : array of quad elements containing  
+      !                        information of entire grid
+      !         - nint       : number of intervals given by 
+      !                        xnodes (i.e. # of nodes - 1) 
+      !         - leg_mat    : matrix containing the evaluation
+      !                        of each Leg poly at the quadrature
+      !                        nodes
+      !         - weights    : array containing the weights 
+      !                        for gaussian quadrature
+      !
+      ! Output:   Compute the Laplacian on a given quad qd and 
+      !           output to the array lap
+      ! ========================================================
+      use type_defs
+      use quad_element
+      use problemsetup
+      implicit none
+      type(quad) :: qds(1:nelemy*nelemx)
+      real(dp) :: gradx(0:(q+1)**2-1), grady(0:(q+1)**2-1),&
+                  lap(0:q,0:q,nelemx,nelemy), temp(0:(q+1)**2-1)
+      ! real(dp) :: ub(0:nint,4,nelemx,nelemy),gradb(0:nint,4,nelemx,nelemy)
+      ! integer  :: i,j,k,l,i1,i2,sz1,sz2,ind
+      integer  :: i,j,k,l,sz1,sz2,ind, tmp
+      ! real(dp) :: weights(0:nint), leg_mat(0:nint,0:q)
+
+      !implicitly assume nvar = 1 since it is in our case
+     
+      ! ! Build u on the boundary 1,2,3,4 are x = -1, x = 1, y = -1, y = 1.
+      ! do j = 1,nelemy
+      !   do i = 1,nelemx
+      !    ind = i + (j-1)*nelemx 
+      !    ub(:,:,i,j) = 0.0_dp
+      !    do i2 = 0,q
+      !     do i1 = 0,q
+      !      ub(:,1,i,j) = ub(:,1,i,j) + qds(ind)%u(i1,i2,1)*leg_mat(1,i1)*leg_mat(:,i2)
+      !      ub(:,2,i,j) = ub(:,2,i,j) + qds(ind)%u(i1,i2,1)*leg_mat(nint,i1)*leg_mat(:,i2)
+      !      ub(:,3,i,j) = ub(:,3,i,j) + qds(ind)%u(i1,i2,1)*leg_mat(:,i1)*leg_mat(1,i2)
+      !      ub(:,4,i,j) = ub(:,4,i,j) + qds(ind)%u(i1,i2,1)*leg_mat(:,i1)*leg_mat(nint,i2)
+      !     end do
+      !    end do
+      !   end do
+      !  end do
+
+      !To start with Dirichlet boundary conditions in x
+      ! do j = 1,nelemy
+      !  ! Use the left side flux
+      !  do i = 1,nelemx-1
+      !   ub(:,2,i,j) = ub(:,1,i+1,j)
+      !  end do
+      !  ub(:,2,nelemx,j) = 0.0_dp
+      !  ub(:,1,1,j) = 0.0_dp
+      ! end do
+
+      ! ! Dirichlet boundary conditions in the y-direction
+      ! do i = 1,nelemx
+      !  do j = 1,nelemy-1
+      !   ub(:,4,i,j) = ub(:,3,i,j+1)
+      !  end do
+      !  ub(:,4,i,nelemy) =  0.0_dp
+      !  ub(:,3,i,1)      =  0.0_dp
+      ! end do
+      
+      !Needed for BLAS's DGEMV routine
+      sz1 = 1
+      sz2 = (q+1)**2
+
+      !Now we'll compute the Laplacian in each box. Note that 
+      !our problem has constant coefficients so that 
+      !no integration by parts is needed and so we won't have
+      !flux integrals to account for here.
+      do j = 1,nelemy 
+        do i =1,nelemx
+          ind = i + (j-1)*nelemx
+          !take a single derivative in x
+          call DGEMV('N',sz2,sz2,1.0_dp,qds(ind)%Diff_x,sz2,&
+               qds(ind)%u,step,0.0_dp,gradx,step)
+          call DGETRS('N',sz2,1,qds(ind)%M,sz2,qds(ind)%IPIV,gradx,sz2,INFO)
+          
+          temp = 0.0_dp
+          !take a second derivative in x
+          call DGEMV('N',sz2,sz2,1.0_dp,qds(ind)%Diff_x,sz2,&
+               gradx,step,0.0_dp,temp,step)
+          ! call DGETRS('N',sz2,1,qds(ind)%M,sz2,qds(ind)%IPIV,temp,sz2,INFO)
+          gradx = temp
+
+          !take a single derivative in y
+          call DGEMV('N',sz2,sz2,1.0_dp,qds(ind)%Diff_y,sz2,&
+               qds(ind)%u,step,0.0_dp,grady,step)
+          call DGETRS('N',sz2,1,qds(ind)%M,sz2,qds(ind)%IPIV,grady,sz2,INFO)
+          temp = 0.0_dp
+
+          !take a second derivative in y (and then add the derivatives in x)
+          call DGEMV('N',sz2,sz2,1.0_dp,qds(ind)%Diff_y,sz2,&
+               grady,step,1.0_dp,gradx,step)
+
+          !backsolve for the final set of coefficients
+          call DGETRS('N',sz2,1,qds(ind)%M,sz2,qds(ind)%IPIV,gradx,sz2,INFO)
+          ! grady = temp
+
+          !Now we store the coefficients in a single array
+          do l = 0,q
+            tmp = l*(q+1)
+            do k = 0,q
+              ! lap(k,l,i,j) = grady(k + tmp) + gradx(k + tmp)
+              lap(k,l,i,j) = gradx(k + tmp)
+            end do 
+          end do 
+        end do 
+      end do
+    end subroutine compute_laplacian
 
 
 end program coeff2d
