@@ -18,18 +18,18 @@ program coeff2d
   ! list of all elements
   type(quad), DIMENSION(:), ALLOCATABLE :: qds
   real(kind=dp), DIMENSION(:), ALLOCATABLE :: err_vec, err_vec_lap
-  real(kind=dp), DIMENSION(:,:,:,:), ALLOCATABLE :: lap
+  real(kind=dp), DIMENSION(:,:,:,:), ALLOCATABLE :: lap, u
   real(kind = dp), parameter :: pi = acos(-1.d0)
 
-  integer :: i,j,ind,n_gll,k,l,INFO,step,n,neighbor_ind
-  integer :: num_quads, sz2, i1, i2
-  real(kind=dp) :: weights(0:nint), xnodes(0:nint),diffmat(0:nint,0:nint),&
+  integer :: i,j,ind,n_gll,k,l,INFO,step,n,neighbor_ind,it 
+  integer :: num_quads,sz2,i1,i2
+  real(kind=dp) :: weights(0:nint),xnodes(0:nint),diffmat(0:nint,0:nint),&
                    leg_mat(0:nint,0:q),leg_der_mat(0:nint,0:q),BFWeights(0:nint,2)
-  real(kind=dp) :: true_sol(0:nint,0:nint), approx_sol(0:nint,0:nint)
+  real(kind=dp) :: true_sol(0:nint,0:nint),approx_sol(0:nint,0:nint)
   ! real(kind=dp) :: u_x(0:(q+1)**2-1), gradx(0:(q+1)**2-1), &
   !                 grady(0:(q+1)**2-1), temp(0:(q+1)**2-1)
-  real(kind=dp) :: hx, hy, lt_x, rt_x, lt_y, rt_y, lam_max, dt
-  real(dp) :: up(0:q,0:q,nvar,nelemx,nelemy),kstage(0:q,0:q,nvar,nelemx,nelemy,4)
+  real(kind=dp) :: hx,hy,lt_x,rt_x,lt_y,rt_y,lam_max,dt,t,tend
+  real(dp) :: up(0:q,0:q,nelemx,nelemy),kstage(0:q,0:q,nelemx,nelemy,4)
 
   num_quads = nelemx*nelemy
   ! Weights for quadrature and differentiation on the elements.
@@ -56,6 +56,7 @@ program coeff2d
   ALLOCATE(err_vec(1:num_quads))
   ALLOCATE(err_vec_lap(1:num_quads))
   ALLOCATE(lap(0:q,0:q,nelemx,nelemy))
+  ALLOCATE(u(0:q,0:q,nelemx,nelemy))
 
   hx = 2.d0/DBLE(nelemx)
   hy = 2.d0/DBLE(nelemy)
@@ -153,6 +154,9 @@ program coeff2d
         qds(ind)%bc_type(4) = -1
         qds(ind)%has_physical_bc = .TRUE.
       END IF
+
+      !store coefficients in external array
+      u(:,:,i,j) = qds(ind)%u(:,:,1)
     end do
   end do 
 
@@ -191,7 +195,7 @@ program coeff2d
   step = 1
  
   !Now let's compute the Laplacian in each quad
-  CALL compute_laplacian(lap,qds)
+  CALL compute_laplacian(lap,qds,u,leg_mat,weights)
 
   !Here we'll double check that the Laplacian operator is working correctly
   do i2 = 1,nelemy
@@ -225,17 +229,83 @@ program coeff2d
   !that with decent accuracy first. Then we'll time step 
   !more generally.
 
-  dt = CFL*min(hx,hy)/real(q,dp)**2/lam_max
-  write(*,*) dt
+  lap = 0.0_dp
+  t = 0.0_dp
+  it = 0
+
+  !Here we will time step and collect the error at each
+  !time step to see if we are running things correctly
+  DO WHILE (it < 20) 
+    up = u
+    !Here we need a better way to time step? We have to take
+    !stupid small time steps to keep just 4-5 digits
+    dt = CFL*(min(hx,hy)**2.0_dp)/real(q,dp)**2/lam_max/10000.0_dp
+    ! dt = min(dt,tend-dt)
+    IF(nu .gt. 0.0_dp) THEN
+      CALL compute_laplacian(lap,qds,u,leg_mat,weights)
+    END IF
+    !Compute first stage in RK4
+    kstage(:,:,:,:,1) = nu*lap
+    u = up + 0.5_dp*dt*kstage(:,:,:,:,1)
+    IF(nu .gt. 0.0_dp) THEN
+      CALL compute_laplacian(lap,qds,u,leg_mat,weights)
+    END IF
+    !Compute second stage in RK4
+    kstage(:,:,:,:,2) = nu*lap
+    u = up + 0.5_dp*dt*kstage(:,:,:,:,2)
+    IF(nu .gt. 0.0_dp) THEN
+      CALL compute_laplacian(lap,qds,u,leg_mat,weights)
+    END IF
+    !Compute third stage in RK4
+    kstage(:,:,:,:,3) = nu*lap
+    u = up + 0.5_dp*dt*kstage(:,:,:,:,3)
+    IF(nu .gt. 0.0_dp) THEN
+      CALL compute_laplacian(lap,qds,u,leg_mat,weights)
+    END IF
+    !Compute fourth stage in RK4
+    kstage(:,:,:,:,4) = nu*lap
+    !time step forward
+    u = up + (dt/6.0_dp)*(kstage(:,:,:,:,1) + 2.0_dp*&
+      kstage(:,:,:,:,2)+2.0_dp*kstage(:,:,:,:,3)+&
+      kstage(:,:,:,:,4))
+    t = t + dt 
+    it = it + 1
 
 
+    !Now let us compute the error at each time step
+    do i2 = 1,nelemy
+      do i1 = 1,nelemx
+        ind = i1 + (i2-1)*nelemx
+        do j = 0,n_gll-1
+          do i =0,n_gll-1
+            !build true solution on the given grid
+            true_sol(i,j) = EXP(-2.0_dp*pi*t)*init_u(qds(ind)%x(i,j),qds(ind)%y(i,j))
+            
+            !build approximation
+            approx_sol(i,j) = 0.0_dp
+            do l=0,q
+              do k=0,q 
+                approx_sol(i,j) = approx_sol(i,j) + u(k,l,i1,i2)*leg_mat(i,k)*leg_mat(j,l)
+              end do 
+            end do 
+          end do 
+        end do
+        write(*,*) 'We are currently at time t = : ', t
+        write(*,*) 'The error at this time step is : ', &
+                    NORM2(true_sol - approx_sol)
+      end do 
+    end do
+  END DO 
 
+  !Deallocate all dynamic arrays
   do i = 1,num_quads
     CALL deallocate_quad(qds(i))
   end do
   DEALLOCATE(qds)
   DEALLOCATE(err_vec)
-
+  DEALLOCATE(err_vec_lap)
+  DEALLOCATE(lap)
+  DEALLOCATE(u)
 contains
 
     subroutine set_initial_data(qd)
@@ -488,7 +558,8 @@ contains
       real(kind=dp) :: fint(0:nint),weights(0:nint),fint_x(0:nint),fint_y(0:nint)
       integer :: i,j,k,l,iy,row,col
       !
-      ! This routine assembles the mass matrix M
+      ! This routine assembles the mass matrix M and the differentiation matrices in 
+      ! the x and y directions.
       !
       ! We assume the modes are ordered in column major order with the "1" coordinate first:
       ! u_00,1, u_10,1, u_20,1,..., u_01,1,..., u_qq,1, u_00,2, u_10,2, u_20,2,..., u_01,2,..., u_qq,2....
@@ -531,20 +602,21 @@ contains
           qd%M(row,col) = sum(weights*fint)
           qd%Diff_x(row,col) = sum(weights*fint_x)
           qd%Diff_y(row,col) = sum(weights*fint_y)
-          !Note that if we have to do an integration
-          !by parts, we'll need to transpose and
-          !multiply by 1.
          end do
         end do
        end do
       end do
     end subroutine assemble
 
-    ! subroutine compute_laplacian(lap,qds,leg_mat,weights)
-    subroutine compute_laplacian(lap,qds)
+    subroutine compute_laplacian(lap,qds,u,leg_mat,weights)
       ! ========================================================
-      ! Inputs: - qds         : array of quad elements containing  
+      ! Inputs: - qds        : array of quad elements containing  
       !                        information of entire grid
+      !         - u          : array containing coefficients
+      !                        of projection (note that qds
+      !                        has this already, but we'll
+      !                        need this additional input for 
+      !                        time stepping)
       !         - nint       : number of intervals given by 
       !                        xnodes (i.e. # of nodes - 1) 
       !         - leg_mat    : matrix containing the evaluation
@@ -560,96 +632,150 @@ contains
       use quad_element
       use problemsetup
       implicit none
-      type(quad) :: qds(1:nelemy*nelemx)
-      real(dp) :: gradx(0:(q+1)**2-1), grady(0:(q+1)**2-1),&
-                  lap(0:q,0:q,nelemx,nelemy), temp(0:(q+1)**2-1)
-      ! real(dp) :: ub(0:nint,4,nelemx,nelemy),gradb(0:nint,4,nelemx,nelemy)
-      ! integer  :: i,j,k,l,i1,i2,sz1,sz2,ind
-      integer  :: i,j,k,l,sz1,sz2,ind, tmp
-      ! real(dp) :: weights(0:nint), leg_mat(0:nint,0:q)
-
+      type(quad) :: qds(nelemy*nelemx)
+      real(dp) :: gradx(0:q,0:q,nelemx,nelemy),grady(0:q,0:q,nelemx,nelemy),&
+                  lap(0:q,0:q,nelemx,nelemy),u(0:q,0:q,nelemx,nelemy)
+      real(dp) :: ub(0:nint,4,nelemx,nelemy),gradb(0:nint,4,nelemx,nelemy)
+      integer  :: i,j,k,l,i1,i2,sz1,sz2,ind
+      real(dp) :: weights(0:nint),leg_mat(0:nint,0:q)
+      real(kind = dp), parameter :: pi = acos(-1.d0)
       !implicitly assume nvar = 1 since it is in our case
      
-      ! ! Build u on the boundary 1,2,3,4 are x = -1, x = 1, y = -1, y = 1.
-      ! do j = 1,nelemy
-      !   do i = 1,nelemx
-      !    ind = i + (j-1)*nelemx 
-      !    ub(:,:,i,j) = 0.0_dp
-      !    do i2 = 0,q
-      !     do i1 = 0,q
-      !      ub(:,1,i,j) = ub(:,1,i,j) + qds(ind)%u(i1,i2,1)*leg_mat(1,i1)*leg_mat(:,i2)
-      !      ub(:,2,i,j) = ub(:,2,i,j) + qds(ind)%u(i1,i2,1)*leg_mat(nint,i1)*leg_mat(:,i2)
-      !      ub(:,3,i,j) = ub(:,3,i,j) + qds(ind)%u(i1,i2,1)*leg_mat(:,i1)*leg_mat(1,i2)
-      !      ub(:,4,i,j) = ub(:,4,i,j) + qds(ind)%u(i1,i2,1)*leg_mat(:,i1)*leg_mat(nint,i2)
-      !     end do
-      !    end do
-      !   end do
-      !  end do
+      ! Build u on the boundary 1,2,3,4 are x = -1, x = 1, y = -1, y = 1.
+      do j = 1,nelemy
+        do i = 1,nelemx
+         ub(:,:,i,j) = 0.0_dp
+         do i2 = 0,q
+          do i1 = 0,q
+           ub(:,1,i,j) = ub(:,1,i,j) + u(i1,i2,i,j)*leg_mat(1,i1)*leg_mat(:,i2)
+           ub(:,2,i,j) = ub(:,2,i,j) + u(i1,i2,i,j)*leg_mat(nint,i1)*leg_mat(:,i2)
+           ub(:,3,i,j) = ub(:,3,i,j) + u(i1,i2,i,j)*leg_mat(:,i1)*leg_mat(1,i2)
+           ub(:,4,i,j) = ub(:,4,i,j) + u(i1,i2,i,j)*leg_mat(:,i1)*leg_mat(nint,i2)
+          end do
+         end do
+        end do
+       end do
 
-      !To start with Dirichlet boundary conditions in x
-      ! do j = 1,nelemy
-      !  ! Use the left side flux
-      !  do i = 1,nelemx-1
-      !   ub(:,2,i,j) = ub(:,1,i+1,j)
-      !  end do
-      !  ub(:,2,nelemx,j) = 0.0_dp
-      !  ub(:,1,1,j) = 0.0_dp
-      ! end do
+      ! To start with: Dirichlet boundary conditions in x
+      do j = 1,nelemy
+       ! Use the left side flux
+       do i = 1,nelemx-1
+        ub(:,2,i,j) = ub(:,1,i+1,j)
+       end do
+       ub(:,2,nelemx,j) = 0.0_dp
+       ub(:,1,1,j) = 0.0_dp
+      end do
 
-      ! ! Dirichlet boundary conditions in the y-direction
-      ! do i = 1,nelemx
-      !  do j = 1,nelemy-1
-      !   ub(:,4,i,j) = ub(:,3,i,j+1)
-      !  end do
-      !  ub(:,4,i,nelemy) =  0.0_dp
-      !  ub(:,3,i,1)      =  0.0_dp
-      ! end do
+      ! Dirichlet boundary conditions in the y-direction
+      do i = 1,nelemx
+       do j = 1,nelemy-1
+        ub(:,4,i,j) = ub(:,3,i,j+1)
+       end do
+       ub(:,4,i,nelemy) =  0.0_dp
+       ub(:,3,i,1)      =  0.0_dp
+      end do
       
       !Needed for BLAS's DGEMV routine
       sz1 = 1
       sz2 = (q+1)**2
 
-      !Now we'll compute the Laplacian in each box. Note that 
-      !our problem has constant coefficients so that 
-      !no integration by parts is needed and so we won't have
-      !flux integrals to account for here.
+      !Now we'll compute the Laplacian in each box
       do j = 1,nelemy 
         do i =1,nelemx
+          !create a local index to identify quad
           ind = i + (j-1)*nelemx
+
+          !We'll first do the flux integrals in x
+          gradx(:,:,i,j) = 0.0_dp
+          do l =0,q
+           do k = 0,q
+            gradx(k,l,i,j) = gradx(k,l,i,j) &
+             +sum(qds(ind)%ry(nint,:)*weights*ub(:,2,i,j)*leg_mat(nint,k)*leg_mat(:,l))&
+             -sum(qds(ind)%ry(0,:)*weights*ub(:,1,i,j)*leg_mat(0,k)*leg_mat(:,l))
+            end do
+          end do   
+
           !take a single derivative in x
           call DGEMV('N',sz2,sz2,1.0_dp,qds(ind)%Diff_x,sz2,&
-               qds(ind)%u,step,0.0_dp,gradx,step)
-          call DGETRS('N',sz2,1,qds(ind)%M,sz2,qds(ind)%IPIV,gradx,sz2,INFO)
-          
-          temp = 0.0_dp
-          !take a second derivative in x
-          call DGEMV('N',sz2,sz2,1.0_dp,qds(ind)%Diff_x,sz2,&
-               gradx,step,0.0_dp,temp,step)
-          ! call DGETRS('N',sz2,1,qds(ind)%M,sz2,qds(ind)%IPIV,temp,sz2,INFO)
-          gradx = temp
+               u(:,:,i,j),step,1.0_dp,gradx(:,:,i,j),step)
+          call DGETRS('N',sz2,1,qds(ind)%M,sz2,qds(ind)%IPIV,gradx(:,:,i,j),sz2,INFO)
+
+          !We'll first do the flux integrals in y
+          grady(:,:,i,j) = 0.0_dp
+          do l =0,q
+           do k = 0,q
+            grady(k,l,i,j) = &
+             +sum(qds(ind)%sx(:,nint)*weights*ub(:,4,i,j)*leg_mat(:,k)*leg_mat(nint,l))&
+             -sum(qds(ind)%sx(:,0)*weights*ub(:,3,i,j)*leg_mat(:,k)*leg_mat(0,l))
+            end do
+          end do 
 
           !take a single derivative in y
           call DGEMV('N',sz2,sz2,1.0_dp,qds(ind)%Diff_y,sz2,&
-               qds(ind)%u,step,0.0_dp,grady,step)
-          call DGETRS('N',sz2,1,qds(ind)%M,sz2,qds(ind)%IPIV,grady,sz2,INFO)
-          temp = 0.0_dp
+               u(:,:,i,j),step,1.0_dp,grady(:,:,i,j),step)
+          call DGETRS('N',sz2,1,qds(ind)%M,sz2,qds(ind)%IPIV,grady(:,:,i,j),sz2,INFO)
+        end do 
+      end do
 
-          !take a second derivative in y (and then add the derivatives in x)
-          call DGEMV('N',sz2,sz2,1.0_dp,qds(ind)%Diff_y,sz2,&
-               grady,step,1.0_dp,gradx,step)
+      !Now we build the derivatives on the entire grid and 
+      !proceed to build the Laplacian
+      do j = 1,nelemy
+       do i = 1,nelemx
+        gradb(:,:,i,j) = 0.0_dp
+        do i2 = 0,q
+          do i1 = 0,q
+           gradb(:,1,i,j) = gradb(:,1,i,j) &
+             + gradx(i1,i2,i,j)*leg_mat(0,i1)*leg_mat(:,i2)
+           gradb(:,2,i,j) = gradb(:,2,i,j) &
+             + gradx(i1,i2,i,j)*leg_mat(nint,i1)*leg_mat(:,i2)
+           gradb(:,3,i,j) = gradb(:,3,i,j) &
+             + grady(i1,i2,i,j)*leg_mat(:,i1)*leg_mat(0,i2)
+           gradb(:,4,i,j) = gradb(:,4,i,j) &
+             + grady(i1,i2,i,j)*leg_mat(:,i1)*leg_mat(nint,i2)
+          end do
+        end do
+       end do
+      end do
 
-          !backsolve for the final set of coefficients
-          call DGETRS('N',sz2,1,qds(ind)%M,sz2,qds(ind)%IPIV,gradx,sz2,INFO)
-          ! grady = temp
+      !Insist consistency across elements
+      !NOTE: Here is where we might want to 
+      !impose radiating boundary conditions
+      do j = 1,nelemy
+       do i = 2,nelemx
+        gradb(:,1,i,j) = gradb(:,2,i-1,j)
+       end do
+      end do
+      ! gradb(:,1,1,:) = gradb(:,2,nelemx,:)
 
-          !Now we store the coefficients in a single array
-          do l = 0,q
-            tmp = l*(q+1)
-            do k = 0,q
-              ! lap(k,l,i,j) = grady(k + tmp) + gradx(k + tmp)
-              lap(k,l,i,j) = gradx(k + tmp)
+      do i = 1,nelemx
+       do j = 2,nelemy
+        gradb(:,3,i,j) = gradb(:,4,i,j-1)
+       end do
+      end do
+
+      do j = 1,nelemy
+        do i = 1,nelemx 
+          lap(:,:,i,j) = 0.0_dp
+
+          !Add flux integrals
+          do l=0,q
+            do k =0,q
+              lap(k,l,i,j) = &
+            + sum(qds(ind)%ry(nint,:)*weights*gradb(:,2,i,j)*leg_mat(nint,k)*leg_mat(:,l))&
+            - sum(qds(ind)%ry(0,:)*weights*gradb(:,1,i,j)*leg_mat(0,k)*leg_mat(:,l)) &
+            + sum(qds(ind)%sx(:,nint)*weights*gradb(:,4,i,j)*leg_mat(:,k)*leg_mat(nint,l))&
+            - sum(qds(ind)%sx(:,0)*weights*gradb(:,3,i,j)*leg_mat(:,k)*leg_mat(0,l))
             end do 
           end do 
+
+          !Add a derivative in x
+          call DGEMV('N',sz2,sz2,1.0_dp,qds(ind)%Diff_x,sz2,&
+               gradx(:,:,i,j),step,1.0_dp,lap(:,:,i,j),step)
+          !Add a derivative in y
+          call DGEMV('N',sz2,sz2,1.0_dp,qds(ind)%Diff_y,sz2,&
+               grady(:,:,i,j),step,1.0_dp,lap(:,:,i,j),step)
+          !Backsolve the mass matrix to get coefficients of Laplacian
+          call DGETRS('N',sz2,1,qds(ind)%M,sz2,qds(ind)%IPIV,lap(:,:,i,j),sz2,INFO)
         end do 
       end do
     end subroutine compute_laplacian
