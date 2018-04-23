@@ -2,8 +2,9 @@ module problemsetup
   use type_defs
   implicit none
   integer, parameter :: nvar = 1
-  integer, parameter :: q = 1
+  integer, parameter :: q = 5
   integer, parameter :: nint = 10
+  integer, parameter :: nx = 5, ny = 5
   !number of intervals in theta and r
   integer, parameter :: nt = 2, nr = 2
   real(kind = dp), parameter :: CFL = 0.1d0
@@ -34,7 +35,7 @@ contains
     real(kind = dp) :: x,y
     real(kind = dp), parameter :: pi = acos(-1.d0)
     !init_u = sin(2.d0*pi*x)*sin(2.d0*pi*y)
-    init_u = x*y + 2.0_dp
+    init_u = 2.0_dp
     return
     ! DEAA: Change to fit with your problem
   end function init_u

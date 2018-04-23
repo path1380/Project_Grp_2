@@ -23,6 +23,7 @@ program main
   use legendre_module
   use quad_element
   use type_defs
+  use solve_quad_flux
   implicit none
 
   real(kind=dp) :: qnodes(0:nint),weights(0:nint)
@@ -34,5 +35,16 @@ program main
   
   n_gll = nint+1
 
-  write(*,*) nx,ny
+  qd%n_gll = n_gll
+  qd%my_ind = 18
+
+  do i=0,q
+     do j=0,q
+        qd%u(j,i,1) = 0.0_dp
+     end do
+  end do
+
+  call solve_flux(qd,0.5_dp)
+
+  write(*,*) qd%nbr(:,1)
 end program main
