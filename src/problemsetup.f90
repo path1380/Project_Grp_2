@@ -2,15 +2,17 @@ module problemsetup
   use type_defs
   implicit none
   integer, parameter :: nvar = 1
-  integer, parameter :: q = 21
+  integer, parameter :: q = 2
   integer, parameter :: nint = 40
 
   !number of elements along each direction
-  integer, parameter :: nelemx = 1, nelemy = 1
+  integer, parameter :: nelemx = 10, nelemy = 10
   real(kind = dp), parameter :: CFL = 0.1d0
   ! real(kind = dp), parameter :: tend = 1.d0
   real(kind = dp), parameter :: nu = 1.d0
   real(kind = dp) :: bc(10:99,nvar)
+  real(kind=dp) :: ux = 0.0_dp
+  real(kind=dp) :: uy = 0.0_dp
 
   integer, parameter :: nplot = 4
   logical, parameter :: upwind = .true.

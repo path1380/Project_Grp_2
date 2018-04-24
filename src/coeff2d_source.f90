@@ -30,7 +30,7 @@ program coeff2d
   !                 grady(0:(q+1)**2-1), temp(0:(q+1)**2-1)
   real(kind=dp) :: hx,hy,lt_x,rt_x,lt_y,rt_y,lam_max,dt,t,tend
   real(dp) :: up(0:q,0:q,nelemx,nelemy),kstage(0:q,0:q,nelemx,nelemy,4)
-  real(dp) :: Source(0:q,0:q)
+  real(dp) :: Source(0:q,0:q,nelemx,nelemy)
 
   num_quads = nelemx*nelemy
   ! Weights for quadrature and differentiation on the elements.
@@ -198,6 +198,10 @@ program coeff2d
   !Now let's compute the Laplacian in each quad
   CALL compute_laplacian(lap,qds,u,leg_mat,weights)
 
+  !ADDITION TO FILE
+  !Compute Source Term
+  call compute_source(5,5,hx*hy/4.0_dp,0.0_dp,0.0_dp,Source)
+
   !Here we'll double check that the Laplacian operator is working correctly
   do i2 = 1,nelemy
     do i1 = 1,nelemx
@@ -246,25 +250,25 @@ program coeff2d
       CALL compute_laplacian(lap,qds,u,leg_mat,weights)
     END IF
     !Compute first stage in RK4
-    kstage(:,:,:,:,1) = nu*lap
+    kstage(:,:,:,:,1) = nu*lap + Source
     u = up + 0.5_dp*dt*kstage(:,:,:,:,1)
     IF(nu .gt. 0.0_dp) THEN
       CALL compute_laplacian(lap,qds,u,leg_mat,weights)
     END IF
     !Compute second stage in RK4
-    kstage(:,:,:,:,2) = nu*lap
+    kstage(:,:,:,:,2) = nu*lap + Source
     u = up + 0.5_dp*dt*kstage(:,:,:,:,2)
     IF(nu .gt. 0.0_dp) THEN
       CALL compute_laplacian(lap,qds,u,leg_mat,weights)
     END IF
     !Compute third stage in RK4
-    kstage(:,:,:,:,3) = nu*lap
+    kstage(:,:,:,:,3) = nu*lap + Source
     u = up + 0.5_dp*dt*kstage(:,:,:,:,3)
     IF(nu .gt. 0.0_dp) THEN
       CALL compute_laplacian(lap,qds,u,leg_mat,weights)
     END IF
     !Compute fourth stage in RK4
-    kstage(:,:,:,:,4) = nu*lap
+    kstage(:,:,:,:,4) = nu*lap + Source
     !time step forward
     u = up + (dt/6.0_dp)*(kstage(:,:,:,:,1) + 2.0_dp*&
       kstage(:,:,:,:,2)+2.0_dp*kstage(:,:,:,:,3)+&
@@ -298,9 +302,7 @@ program coeff2d
     end do
   END DO
 
-  call compute_source(hx*hy/4.0_dp,0.0_dp,0.0_dp,Source)
-
-  write(*,*) Source
+  !write(*,*) Source
 
   !Deallocate all dynamic arrays
   do i = 1,num_quads
@@ -785,17 +787,30 @@ contains
       end do
     end subroutine compute_laplacian
 
-    subroutine compute_source(jac,xs,ys,S)
-      real(kind=dp), dimension(0:q,0:q) :: S
+    subroutine compute_source(elx,ely,jac,xs,ys,S)
+      real(kind=dp), dimension(0:q,0:q,nelemx,nelemy) :: S
+      integer :: elx,ely
       real(kind=dp) :: xs,ys
       real(kind=dp) :: jac
       
-      integer :: i,j
+      integer :: i,j,k,l
 
-
-      do j=0,q
-         do i=0,q
-            S(i,j) = legendre(xs,i)*legendre(ys,j)*jac
+      do l=1,nelemy
+         do k=1,nelemx
+            do j=0,q
+               do i=0,q
+                  if (l /= ely) then
+                     S(i,j,k,l) = 0.0_dp
+                  else if (l == ely) then
+                     if (k /= elx) then
+                        S(i,j,k,l) = 0.0_dp
+                     else if (k == elx) then
+                        S(i,j,k,l) = legendre(xs,i)*legendre(ys,j)*jac
+                        write(*,*) S(i,j,k,l)
+                     end if
+                  end if
+               end do
+            end do
          end do
       end do
      
