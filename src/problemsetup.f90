@@ -2,17 +2,15 @@ module problemsetup
   use type_defs
   implicit none
   integer, parameter :: nvar = 1
-  integer, parameter :: q = 2
-  integer, parameter :: nint = 40
+  integer, parameter :: q = 4
+  integer, parameter :: nint = 13
 
   !number of elements along each direction
-  integer, parameter :: nelemx = 10, nelemy = 10
+  integer, parameter :: nelemx = 8, nelemy = 8
   real(kind = dp), parameter :: CFL = 0.1d0
   ! real(kind = dp), parameter :: tend = 1.d0
-  real(kind = dp), parameter :: nu = 1.d0
+  real(kind = dp), parameter :: nu = 0.d0
   real(kind = dp) :: bc(10:99,nvar)
-  real(kind=dp) :: ux = 0.0_dp
-  real(kind=dp) :: uy = 0.0_dp
 
   integer, parameter :: nplot = 4
   logical, parameter :: upwind = .true.
@@ -42,8 +40,8 @@ contains
     implicit none
     real(kind = dp) :: x,y
     real(kind = dp), parameter :: pi = acos(-1.d0)
-    init_u = sin(pi*x)*sin(pi*y)
-    ! init_u = 0.25_dp*(x**2.0_dp + y**2.0_dp)
+    ! init_u = sin(pi*x)*sin(pi*y)
+    init_u = (x**2.0_dp + y**2.0_dp)
     ! init_u = 3.d0*x**2.d0*y**4.d0
     return
   end function init_u
