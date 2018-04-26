@@ -1,13 +1,9 @@
 program coeff2d
-!This is a test program to calculate the coefficients 
-!of a 2D projection of initial data. Here we will choose
-!the function 
-!           u(x,y) = 0.25*(x^2 + y^2)
-!so that 
-!           u_xx + u_yy = 1
-!Then we will attempt to compute the Laplacian and check our 
-!work. First, we changed quad_element to be 0 indexed, let us 
-!fix those bugs first.
+!This code currently computes the solution to 
+!an advection-diffusion equation with Dirichlet 
+!boundary conditions.
+!
+!CURRENT TASK: Add a source term to the equation.
 
   use type_defs
   use quad_element
@@ -22,20 +18,26 @@ program coeff2d
   real(kind = dp), parameter :: pi = acos(-1.d0)
 
   integer :: i,j,ind,n_gll,k,l,INFO,step,n,neighbor_ind,it 
-  integer :: num_quads,sz2,i1,i2
+  integer :: num_quads,sz2,i1,i2,istart,jstart,source_ind,loc_ind
   real(kind=dp) :: weights(0:nint),xnodes(0:nint),diffmat(0:nint,0:nint),&
                    leg_mat(0:nint,0:q),leg_der_mat(0:nint,0:q),BFWeights(0:nint,2)
   real(kind=dp) :: true_sol(0:nint,0:nint),approx_sol(0:nint,0:nint)
   ! real(kind=dp) :: u_x(0:(q+1)**2-1), gradx(0:(q+1)**2-1), &
   !                 grady(0:(q+1)**2-1), temp(0:(q+1)**2-1)
-  real(kind=dp) :: hx,hy,lt_x,rt_x,lt_y,rt_y,lam_max,dt,t,tend,alpha
+  real(kind=dp) :: hx,hy,lt_x,rt_x,lt_y,rt_y,lam_max,dt,t,tend,alpha,utmp
   real(dp) :: up(0:q,0:q,nelemx,nelemy),kstage(0:q,0:q,nelemx,nelemy,4),&
               grad_x(0:q,0:q,nelemx,nelemy), grad_y(0:q,0:q,nelemx,nelemy)
+  real(dp) :: xplot(0:nplot),cof_2_plot(0:nplot,0:q), S(0:q,0:q)
+  real(dp) :: xm(nelemx), x(0:nelemx), ym(nelemy), y(0:nelemy)
+  character(100) :: str
 
   num_quads = nelemx*nelemy
+  loc_ind = (nint + 1)/2
+
   ! Weights for quadrature and differentiation on the elements.
   call lglnodes(xnodes,weights,nint)
   n_gll = nint + 1
+  source_ind = source_x + nelemx*(source_y-1)
 
   !build matrices with values of Legendre polys and 
   !their derivatives
@@ -45,7 +47,6 @@ program coeff2d
     leg_der_mat(i,j) = derlegendre(xnodes(i),j)
    end do
   end do
-
   ! Differentiation matrix for the metric.
   do i = 0,nint
    call weights1(xnodes(i),xnodes,nint,nint,1,BFWEIGHTS)
@@ -61,6 +62,35 @@ program coeff2d
 
   hx = 2.d0/DBLE(nelemx)
   hy = 2.d0/DBLE(nelemy)
+
+  ! ============ FOR PLOTTING ============== !
+  !build x endpoints
+  do i = 0,nelemx
+   x(i) = -1.0_dp + real(i,dp)*hx
+  end do
+
+  !midpoints of each element in x
+  xm = 0.5_dp*(x(1:nelemx)+x(0:nelemx-1))
+ 
+  !build y endpoints
+  do i = 0,nelemy
+   y(i) = -1.0_dp + real(i,dp)*hy
+  end do
+
+  !midpoints of each element in y
+  ym = 0.5_dp*(y(1:nelemy)+y(0:nelemy-1))
+
+
+  do i = 0,nplot
+   xplot(i) = -1.0_dp + 2.0_dp*real(i,dp)/real(nplot,dp)
+  end do
+  ! for plotting
+  do k = 0,q
+   do l = 0,nplot
+    cof_2_plot(l,k) = legendre(xplot(l),k)
+   end do
+  end do
+  ! ============ FOR PLOTTING ============== !
 
   !loop and initialize our quad array
   do j = 1,nelemy
@@ -161,6 +191,11 @@ program coeff2d
     end do
   end do 
 
+  !Compute source term 
+  CALL compute_source(qds(source_ind)%x(loc_ind,loc_ind),&
+        qds(source_ind)%y(loc_ind,loc_ind),&
+        qds(source_ind)%jac(loc_ind,loc_ind),leg_mat,S,&
+        qds(source_ind))
 
   !Now let's double check the projection is 
   !working correctly for multiple elements
@@ -225,9 +260,9 @@ program coeff2d
   ! write(*,*) 'Here is the error in computing the Laplacian: '
   ! write(*,*) MAXVAL(err_vec_lap)
 
-  ! ======================================================== !
-  CALL compute_advection(grad_x,grad_y,u,hx,hy,leg_mat,&
-                        leg_der_mat,weights,qds,alpha)
+  ! ! ======================================================== !
+  ! CALL compute_advection(grad_x,grad_y,u,hx,hy,leg_mat,&
+  !                       leg_der_mat,weights,qds,alpha)
 
 
   ! !Now let us double check that the derivatives are computed 
@@ -264,19 +299,24 @@ program coeff2d
 
   !Here we will time step and collect the error at each
   !time step to see if we are running things correctly
-  DO WHILE (it < 20) 
+  DO WHILE (it < 1000) 
     up = u
     CALL compute_advection(grad_x,grad_y,u,hx,hy,leg_mat,&
                         leg_der_mat,weights,qds,alpha)
     !Here we need a better way to time step? We have to take
     !stupid small time steps to keep just 4-5 digits
-    dt =  CFL*min(hx,hy)/real(q,dp)**2/lam_max
+    ! dt =  CFL*min(hx,hy)/real(q,dp)**2/lam_max
+    ! if(t .eq. 0 ) then 
+      dt =  CFL*min(hx,hy)/real(q,dp)**2
+    ! ELSE 
+    !   dt =  CFL*min(hx,hy)/real(q,dp)**2/alpha
+    ! END IF
     ! dt = min(dt,tend-dt)
     IF(nu .gt. 0.0_dp) THEN
       CALL compute_laplacian(lap,qds,u,leg_mat,weights)
     END IF
     !Compute first stage in RK4
-    kstage(:,:,:,:,1) = grad_x + grad_y + nu*lap
+    kstage(:,:,:,:,1) = -1.0_dp*grad_x + -1.0_dp*grad_y + nu*lap
     u = up + 0.5_dp*dt*kstage(:,:,:,:,1)
     CALL compute_advection(grad_x,grad_y,u,hx,hy,leg_mat,&
                         leg_der_mat,weights,qds,alpha)
@@ -284,7 +324,7 @@ program coeff2d
       CALL compute_laplacian(lap,qds,u,leg_mat,weights)
     END IF
     !Compute second stage in RK4
-    kstage(:,:,:,:,2) = grad_x + grad_y + nu*lap
+    kstage(:,:,:,:,2) = -1.0_dp*grad_x + -1.0_dp*grad_y + nu*lap
     u = up + 0.5_dp*dt*kstage(:,:,:,:,2)
     CALL compute_advection(grad_x,grad_y,u,hx,hy,leg_mat,&
                         leg_der_mat,weights,qds,alpha)
@@ -292,7 +332,7 @@ program coeff2d
       CALL compute_laplacian(lap,qds,u,leg_mat,weights)
     END IF
     !Compute third stage in RK4
-    kstage(:,:,:,:,3) = grad_x + grad_y + nu*lap
+    kstage(:,:,:,:,3) = -1.0_dp*grad_x + -1.0_dp*grad_y + nu*lap
     u = up + 0.5_dp*dt*kstage(:,:,:,:,3)
     CALL compute_advection(grad_x,grad_y,u,hx,hy,leg_mat,&
                         leg_der_mat,weights,qds,alpha)
@@ -300,39 +340,100 @@ program coeff2d
       CALL compute_laplacian(lap,qds,u,leg_mat,weights)
     END IF
     !Compute fourth stage in RK4
-    kstage(:,:,:,:,4) = grad_x + grad_y + nu*lap
+    kstage(:,:,:,:,4) = -1.0_dp*grad_x + -1.0_dp*grad_y + nu*lap
     !time step forward
     u = up + (dt/6.0_dp)*(kstage(:,:,:,:,1) + 2.0_dp*&
       kstage(:,:,:,:,2)+2.0_dp*kstage(:,:,:,:,3)+&
       kstage(:,:,:,:,4))
+    ! if(t .le. 0.1) then 
+    !   u(:,:,source_x,source_y) = u(:,:,source_x,source_y) + dt*S
+    ! else 
+    ! end if
+    ! u(:,:,source_x,source_y) = u(:,:,source_x,source_y) + dt*S
+
     t = t + dt 
     it = it + 1
 
 
-    !Now let us compute the error at each time step
-    do i2 = 1,nelemy
-      do i1 = 1,nelemx
-        ind = i1 + (i2-1)*nelemx
-        do j = 0,n_gll-1
-          do i =0,n_gll-1
-            !build true solution on the given grid
-            true_sol(i,j) = (qds(ind)%x(i,j) - t)**2.0_dp + (qds(ind)%y(i,j) - t)**2.0_dp
+    ! !Now let us compute the error at each time step
+    ! do i2 = 1,nelemy
+    !   do i1 = 1,nelemx
+    !     ind = i1 + (i2-1)*nelemx
+    !     do j = 0,n_gll-1
+    !       do i =0,n_gll-1
+    !         !build true solution on the given grid
+    !         true_sol(i,j) = (qds(ind)%x(i,j) - t)**2.0_dp + (qds(ind)%y(i,j) - t)**2.0_dp
             
-            !build approximation
-            approx_sol(i,j) = 0.0_dp
-            do l=0,q
-              do k=0,q 
-                approx_sol(i,j) = approx_sol(i,j) + u(k,l,i1,i2)*leg_mat(i,k)*leg_mat(j,l)
-              end do 
-            end do 
-          end do 
+    !         !build approximation
+    !         approx_sol(i,j) = 0.0_dp
+    !         do l=0,q
+    !           do k=0,q 
+    !             approx_sol(i,j) = approx_sol(i,j) + u(k,l,i1,i2)*leg_mat(i,k)*leg_mat(j,l)
+    !           end do 
+    !         end do 
+    !       end do 
+    !     end do
+    !     write(*,*) 'We are currently at time t = : ', t
+    !     write(*,*) 'The error at this time step is : ', &
+    !                 NORM2(true_sol - approx_sol)
+    !   end do 
+    ! end do
+   if (mod(it,plot_freq) .eq. 0) then
+    write(*,*) "Saving at time: ", t
+    WRITE(str,'("sol",I2.2,"_",I8.8,".txt")') 1,it
+    OPEN(unit=29,file=trim(str),status="REPLACE")
+    ! Sweep across each x-line one
+    do j = 1,nelemy
+      jstart = 1
+      if (j.eq.1) jstart = 0
+        do l = jstart,nplot
+          do i = 1,nelemx
+            ind = i + (j-1)*nelemx
+            istart = 1
+            if (i.eq.1) istart = 0
+            do k = istart,nplot
+              utmp = 0.0_dp
+              do i2 = 0,q
+                do i1 = 0,q
+                  utmp = utmp + u(i1,i2,i,j)&
+                  *cof_2_plot(k,i1)*cof_2_plot(l,i2)
+                end do
+              end do
+              write(29,*) xm(i)+xplot(k)*hx/2.0_dp, ym(j)+xplot(l)*hy/2.0_dp, utmp
+            end do
+          end do
         end do
-        write(*,*) 'We are currently at time t = : ', t
-        write(*,*) 'The error at this time step is : ', &
-                    NORM2(true_sol - approx_sol)
-      end do 
+      end do
+    close(29)
+   end if
+  END DO
+
+  write(*,*) "Saving at time: ", t
+  WRITE(str,'("sol",I2.2,"_",I8.8,".txt")') 1,it
+  OPEN(unit=29,file=trim(str),status="REPLACE")
+  ! Sweep across each x-line one
+  do j = 1,nelemy
+    jstart = 1
+    if (j.eq.1) jstart = 0
+      do l = jstart,nplot
+        do i = 1,nelemx
+          ind = i + (j-1)*nelemx
+          istart = 1
+          if (i.eq.1) istart = 0
+          do k = istart,nplot
+            utmp = 0.0_dp
+            do i2 = 0,q
+              do i1 = 0,q
+                utmp = utmp + u(i1,i2,i,j)&
+                *cof_2_plot(k,i1)*cof_2_plot(l,i2)
+              end do
+            end do
+            write(29,*) xm(i)+xplot(k)*hx/2.0_dp, ym(j)+xplot(l)*hy/2.0_dp, utmp
+          end do
+        end do
+      end do
     end do
-  END DO 
+  close(29)
 
   !Deallocate all dynamic arrays
   do i = 1,num_quads
@@ -715,6 +816,7 @@ contains
       !Here we need to modify alpha with
       !the appropriate value
       ! alpha = MAXVAL(ABS(u_loc(:,:,:,:)))
+      ! alpha = 100
       alpha = 1.0_dp
       ny = nelemy
       step = 1
@@ -805,10 +907,14 @@ contains
             !where we may need to account for radiating
             !boundary conditions later
             grad_x(k,l,i,j) = grad_x(k,l,i,j) &
-             +sum(qds(ind)%ry(nint,:)*weights*fb_star(:,2,i,j)*&
-              leg_mat(nint,k)*leg_mat(:,l))&
-             -sum(qds(ind)%ry(0,:)*weights*fb_star(:,1,i,j)*&
-              leg_mat(0,k)*leg_mat(:,l))
+             ! +sum(qds(ind)%sy(nint,:)*weights*fb_star(:,2,i,j)*&
+             !  leg_mat(nint,k)*leg_mat(:,l))&
+             ! -sum(qds(ind)%sy(0,:)*weights*fb_star(:,1,i,j)*&
+             !  leg_mat(0,k)*leg_mat(:,l))
+             +sum(weights*fb_star(:,2,i,j)*&
+              leg_mat(nint,k)*leg_mat(:,l)/qds(ind)%sy(nint,:))&
+             -sum(weights*fb_star(:,1,i,j)*&
+              leg_mat(0,k)*leg_mat(:,l)/qds(ind)%sy(0,:))
             end do
           end do 
 
@@ -825,10 +931,14 @@ contains
            do k = 0,q
             !Check the sign of this
             grad_y(k,l,i,j) = grad_y(k,l,i,j) &
-             +sum(qds(ind)%sx(:,nint)*weights*fb_star(:,4,i,j)*&
-              leg_mat(:,k)*leg_mat(nint,l))&
-             -sum(qds(ind)%sx(:,0)*weights*fb_star(:,3,i,j)*&
-              leg_mat(:,k)*leg_mat(0,l))
+             ! +sum(qds(ind)%rx(:,nint)*weights*fb_star(:,4,i,j)*&
+             !  leg_mat(:,k)*leg_mat(nint,l))&
+             ! -sum(qds(ind)%rx(:,0)*weights*fb_star(:,3,i,j)*&
+             !  leg_mat(:,k)*leg_mat(0,l))
+             +sum(weights*fb_star(:,4,i,j)*&
+              leg_mat(:,k)*leg_mat(nint,l)/qds(ind)%rx(:,nint))&
+             -sum(weights*fb_star(:,3,i,j)*&
+              leg_mat(:,k)*leg_mat(0,l)/qds(ind)%rx(:,0))
             end do
           end do 
 
@@ -840,7 +950,7 @@ contains
           call DGETRS('N',sz2,1,qds(ind)%M,sz2,qds(ind)%IPIV,grad_y(:,:,i,j),sz2,INFO)  
         end do
       end do
-      alpha = MAXVAL(ABS(u_loc(:,:,:,:)))         
+      ! alpha = MAXVAL(ABS(u_loc(:,:,:,:)))         
     end subroutine compute_advection
 
 
@@ -1015,5 +1125,28 @@ contains
       end do
     end subroutine compute_laplacian
 
+    subroutine compute_source(xs,ys,jac,leg_mat,S,qds)
+      use type_defs
+      use quad_element
+      use problemsetup
+      type(quad) :: qds
+      real(kind=dp), dimension(0:q,0:q) :: S
+      real(kind=dp) :: xs,ys
+      real(kind=dp) :: jac,leg_mat(0:nint,0:q)
+      
+      integer :: i,j,k,l,sz2
+
+      S = 0.0_dp
+      do j = 0,q
+        do i = 0,q 
+          S(i,j) = leg_mat(xs,i)*leg_mat(ys,j)*jac
+        end do 
+      end do 
+      S = strgth*S
+
+      sz2 = (q+1)**2
+      call DGETRS('N',sz2,1,qds%M,sz2,qds%IPIV,S,sz2,INFO)  
+
+    end subroutine compute_source
 
 end program coeff2d
