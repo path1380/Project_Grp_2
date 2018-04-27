@@ -1,6 +1,6 @@
 clear
-nx = 41;
-ny = 41;
+nx = 21;
+ny = 21;
 
 a1 = dir('sol01_*.txt');
 u = load(a1(1).name);
