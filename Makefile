@@ -1,12 +1,13 @@
 # Makefile for project
 
-FC = gfortran
-LD = gfortran
+FC = ifort
+LD = ifort
 SRC = src
 BIN = bin
-F90FLAGS = -fbounds-check -Wall -fbacktrace -g
+#F90FLAGS = -fbounds-check -Wall -fbacktrace
 FFLAGS = -O3
-LDFLAGS= -llapack -lblas
+LDFLAGS = -mkl -qopt-matmul 
+#LDFLAGS= -lblas -llapack
 _OBJECTS = type_defs.o quad_element.o legendre_module.o problemsetup.o weights.o main.o
 OBJECTS = $(patsubst %,$(BIN)/%,$(_OBJECTS))
 EXECUTABLE = main.x
@@ -15,7 +16,7 @@ EXECUTABLE = main.x
 $(EXECUTABLE): $(OBJECTS)
 	       $(LD) -o $(EXECUTABLE) $(OBJECTS) -I$(BIN)/ $(LDFLAGS)
 $(BIN)/%.o : $(SRC)/%.f90
-	   $(FC) $(F90FLAGS) -c -o $@ $< -J$(BIN)/
+	   $(FC) $(F90FLAGS) -c -o $@ $< -L$(BIN)/
 $(BIN)/%.o : $(SRC)/%.f
 	   $(FC) $(FFLAGS) -c -o $@ $<
 clean:

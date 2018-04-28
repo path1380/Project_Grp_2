@@ -6,15 +6,15 @@ module problemsetup
   integer, parameter :: nint = q+3
 
   !number of elements along each direction
-  integer, parameter :: nelemx = 10, nelemy = 10
+  integer, parameter :: nelemx = 20, nelemy = 20
   !the x and y coordinate of the source
-  integer, parameter :: source_x = 3, source_y = 5
+  integer, parameter :: source_x = 5, source_y = 10
   real(kind = dp), parameter :: CFL = 0.01d0, tend = 1
   ! real(kind = dp), parameter :: tend = 1.d0
-  real(kind = dp), parameter :: nu = 0.0001_dp, strgth = 0.1_dp
+  real(kind = dp), parameter :: nu = 0.00001_dp, strgth = 1_dp
   real(kind = dp) :: bc(10:99,nvar)
 
-  integer, parameter :: nplot = 2, plot_freq = 100
+  integer, parameter :: nplot = 2, plot_freq = 1000
   logical, parameter :: upwind = .true.
   logical, parameter :: plot = .true.
 
