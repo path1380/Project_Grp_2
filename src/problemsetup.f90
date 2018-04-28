@@ -6,9 +6,9 @@ module problemsetup
   integer, parameter :: nint = q+3
 
   !number of elements along each direction
-  integer, parameter :: nelemx = 20, nelemy = 20
+  integer, parameter :: nelemx = 10, nelemy = 10
   !the x and y coordinate of the source
-  integer, parameter :: source_x = 5, source_y = 10
+  integer, parameter :: source_x = 2, source_y = 5
   real(kind = dp), parameter :: CFL = 0.01d0, tend = 1
   ! real(kind = dp), parameter :: tend = 1.d0
   real(kind = dp), parameter :: nu = 0.00001_dp, strgth = 1_dp
