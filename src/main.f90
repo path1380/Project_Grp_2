@@ -598,7 +598,7 @@ contains
          do k = 0,q   !track degree in x direction
           col = k + l*(q+1)
           ! Integrate in r for each s
-          !$OMP PARALLEL DO PRIVATE(iy)
+          !$OMP PARALLEL DO SIMD PRIVATE(iy)
           do iy = 0,nint
 
            !Mass matrix quadrature in r
@@ -617,8 +617,7 @@ contains
              *P(:,k)*P(iy,l)*(DERP(:,i)*P(iy,j)*qd%ry(:,iy)+& 
              P(:,i)*DERP(iy,j)*qd%sy(:,iy))) 
           end do
-          !$OMP END PARALLEL DO
-         
+          !$OMP END PARALLEL DO SIMD
           ! Then integrate in s
           qd%M(row,col) = sum(weights*fint)
           qd%Diff_x(row,col) = sum(weights*fint_x)
