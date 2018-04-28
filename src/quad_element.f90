@@ -53,8 +53,13 @@ module quad_element
      logical :: has_physical_bc
      !%% Information of the approximation
      integer :: q, nvar
+<<<<<<< HEAD
      real(kind=dp), dimension(:,:,:), allocatable :: u,fu,uhat
      real(kind=dp), dimension(:,:),   allocatable :: M,S
+=======
+     real(kind=dp), dimension(:,:,:), allocatable :: u,fu
+     real(kind=dp), dimension(:,:),   allocatable :: M,S,Diff_x,Diff_y
+>>>>>>> f994267bfc8ba6e0efb47082e09d62d24017ea2f
      ! For LAPACK, if needed
      integer,       dimension(:),   allocatable :: IPIV
 
@@ -84,26 +89,29 @@ contains
     ! allocate(qd%M(q**2*nvar,q**2*nvar))
     allocate(qd%M(0:(q+1)**2*nvar-1,0:(q+1)**2*nvar-1))
     allocate(qd%S(0:(q+1)**2*nvar-1,0:(q+1)**2*nvar-1))
+    allocate(qd%Diff_x(0:(q+1)**2*nvar-1,0:(q+1)**2*nvar-1))
+    allocate(qd%Diff_y(0:(q+1)**2*nvar-1,0:(q+1)**2*nvar-1))
+
     ! allocate(qd%S(q**2*nvar,q**2*nvar))
-    allocate(qd%IPIV((q+1)**2*nvar )) ! DEAA CHECK ME, right size?
+    allocate(qd%IPIV(0:(q+1)**2*nvar-1 )) !
 
     ! Allocate metric
-    allocate(qd%jac(n_gll,n_gll))
-    allocate(qd%rx(n_gll,n_gll))
-    allocate(qd%ry(n_gll,n_gll))
-    allocate(qd%sx(n_gll,n_gll))
-    allocate(qd%sy(n_gll,n_gll))
+    allocate(qd%jac(0:n_gll-1,0:n_gll-1))
+    allocate(qd%rx(0:n_gll-1,0:n_gll-1))
+    allocate(qd%ry(0:n_gll-1,0:n_gll-1))
+    allocate(qd%sx(0:n_gll-1,0:n_gll-1))
+    allocate(qd%sy(0:n_gll-1,0:n_gll-1))
 
     ! Allocate grid and Lame parameters
-    allocate(qd%x(n_gll,n_gll))
-    allocate(qd%y(n_gll,n_gll))
-    allocate(qd%material_coeff(n_gll,n_gll))
+    allocate(qd%x(0:n_gll-1,0:n_gll-1))
+    allocate(qd%y(0:n_gll-1,0:n_gll-1))
+    allocate(qd%material_coeff(0:n_gll-1,0:n_gll-1))
     ! Allocate face data
-    allocate(qd%u_in(n_gll,4,nvar))
-    allocate(qd%u_out(n_gll,4,nvar))
-    allocate(qd%nx_in(n_gll,4))
-    allocate(qd%ny_in(n_gll,4))
-    allocate(qd%dl_face(n_gll,4))
+    allocate(qd%u_in(0:n_gll-1,4,nvar))
+    allocate(qd%u_out(0:n_gll-1,4,nvar))
+    allocate(qd%nx_in(0:n_gll-1,4))
+    allocate(qd%ny_in(0:n_gll-1,4))
+    allocate(qd%dl_face(0:n_gll-1,4))
 
   end subroutine allocate_quad
 
