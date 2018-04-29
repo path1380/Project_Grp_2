@@ -21,6 +21,7 @@ program main
   integer :: num_quads,sz2,i1,i2,istart,jstart,source_ind,loc_ind
   real(kind=dp) :: weights(0:nint),xnodes(0:nint),diffmat(0:nint,0:nint),&
                    leg_mat(0:nint,0:q),leg_der_mat(0:nint,0:q),BFWeights(0:nint,2)
+  real(kind=dp) :: approx_sol(0:nint,0:nint)
   ! real(kind=dp) :: true_sol(0:nint,0:nint),approx_sol(0:nint,0:nint)
   ! real(kind=dp) :: u_x(0:(q+1)**2-1), gradx(0:(q+1)**2-1), &
   !                 grady(0:(q+1)**2-1), temp(0:(q+1)**2-1)
@@ -191,11 +192,8 @@ program main
     end do
   end do 
 
-  ! !Compute source term 
-  ! CALL compute_source(qds(source_ind)%x(loc_ind,loc_ind),&
-  !       qds(source_ind)%y(loc_ind,loc_ind),&
-  !       qds(source_ind)%jac(loc_ind,loc_ind),leg_mat,S,&
-  !       qds(source_ind))
+  CALL compute_gauss_source(qds(1),leg_mat,weights,S,loc_ind&
+    ,hx,hy)
 
 
   !Needed for DGEMV
@@ -250,11 +248,7 @@ program main
     u = up + (dt/6.0_dp)*(kstage(:,:,:,:,1) + 2.0_dp*&
       kstage(:,:,:,:,2)+2.0_dp*kstage(:,:,:,:,3)+&
       kstage(:,:,:,:,4))
-    ! if(t .le. 0.1) then 
-    !   u(:,:,source_x,source_y) = u(:,:,source_x,source_y) + dt*S
-    ! else 
-    ! end if
-    ! u(:,:,source_x,source_y) = u(:,:,source_x,source_y) + dt*S
+    u(:,:,source_x,source_y) = u(:,:,source_x,source_y) + dt*S*strgth*(1 + COS(7.0_dp*pi*t))
 
     t = t + dt 
     it = it + 1
@@ -844,6 +838,7 @@ contains
       !implicitly assume nvar = 1 since it is in our case
       
       ! Build u on the boundary 1,2,3,4 are x = -1, x = 1, y = -1, y = 1.
+      !$OMP SIMD COLLAPSE(2)    
       do j = 1,nelemy
         do i = 1,nelemx
          ub(:,:,i,j) = 0.0_dp
@@ -1004,9 +999,9 @@ contains
       use problemsetup
       type(quad) :: qds
       real(kind=dp), dimension(0:q,0:q) :: S
-      real(kind=dp) :: jac,leg_mat(0:nint,0:q)
+      real(kind=dp) :: jac,leg_mat(0:nint,0:q),xs,ys
       
-      integer :: i,j,sz2,xs,ys
+      integer :: i,j,sz2
 
       S = 0.0_dp
       do j = 0,q
@@ -1020,5 +1015,31 @@ contains
       call DGETRS('N',sz2,1,qds%M,sz2,qds%IPIV,S,sz2,INFO)  
 
     end subroutine compute_source
+
+    subroutine compute_gauss_source(qds,P,weights,S,ind,hx,hy)
+      use type_defs
+      use quad_element
+      use problemsetup
+      type(quad) :: qds
+      real(kind=dp), dimension(0:q,0:q) :: S
+      real(kind=dp) :: P(0:nint,0:q),grd_sz,fint(0:nint),hx,hy
+      real(kind=dp) :: weights(0:nint)
+      integer :: i,j,iy,ind
+
+      grd_sz = 1.0_dp/(MIN(hx,hy)**2.0_dp)
+      S = 0.0_dp
+
+      do j = 0,q 
+        do i = 0,q 
+          do iy = 0,nint 
+            fint(iy) = SUM(weights*qds%jac(:,iy)*&
+              P(:,i)*P(iy,j)*EXP(-60.0_dp*((qds%x(ind,ind)-&
+              qds%x(:,iy))**2.0_dp + (qds%y(ind,ind) -&
+              qds%y(:,iy))**2.0_dp)*grd_sz))
+          end do
+          S(i,j) = SUM(weights*fint)
+        end do 
+      end do 
+    end subroutine compute_gauss_source
 
 end program main
