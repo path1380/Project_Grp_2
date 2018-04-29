@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --nodes=1
-#SBATCH --ntasks=24
+#SBATCH --ntasks=1
 #SBATCH --output test.%j.out
 #SBATCH --account=ucbclass2_summit1
 #SBATCH --qos debug

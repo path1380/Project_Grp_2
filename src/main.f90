@@ -674,6 +674,8 @@ contains
       real(dp) :: mode_c
       ! real(dp) :: approx_sol(0:nint,0:nint)
       !Build the solution on the quadrature points
+
+      !$ OMP SIMD COLLAPSE(2)
       do j = 1,nelemy
         do i = 1,nelemx 
           u_loc(:,:,i,j) = 0.0_dp
@@ -691,6 +693,7 @@ contains
           end do 
         end do 
       end do 
+      !$ OMP END SIMD
 
       ! alpha = 1.0_dp
       ny = nelemy
@@ -846,6 +849,8 @@ contains
       !implicitly assume nvar = 1 since it is in our case
       
       ! Build u on the boundary 1,2,3,4 are x = -1, x = 1, y = -1, y = 1.
+
+      !$ OMP SIMD COLLAPSE(2)
       do j = 1,nelemy
         do i = 1,nelemx
          ub(:,:,i,j) = 0.0_dp
@@ -859,6 +864,7 @@ contains
          end do
         end do
        end do
+       !$ OMP END SIMD
 
       !Periodic boundary conditions in x
       do j = 1,nelemy
