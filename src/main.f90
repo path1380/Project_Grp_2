@@ -192,9 +192,13 @@ program main
     end do
   end do 
 
-  CALL compute_gauss_source(qds(1),leg_mat,weights,S,loc_ind&
-    ,hx,hy)
-
+  ! CALL compute_gauss_source(qds(1),leg_mat,weights,S,loc_ind&
+  !   ,hx,hy)
+  !Compute source term 
+  ! CALL compute_source(qds(source_ind)%x(loc_ind,loc_ind),&
+  !       qds(source_ind)%y(loc_ind,loc_ind),&
+  !       qds(source_ind)%jac(loc_ind,loc_ind),leg_mat,S,&
+  !       qds(source_ind))
 
   !Needed for DGEMV
   sz2 = (q+1)**2
@@ -203,52 +207,58 @@ program main
   lap = 0.0_dp
   t = 0.0_dp
   it = 0
-  dt =  CFL*min(hx,hy)/real(q,dp)**2
+  dt =  CFL*min(hx,hy)**2.0_dp/real(q,dp)**2
   
   !Here we will time step and collect the error at each
   !time step to see if we are running things correctly
   DO WHILE (t < tend) 
     up = u
-    CALL compute_advection(grad_x,grad_y,u,leg_mat,&
-                        weights,qds)
+    ! CALL compute_advection(grad_x,grad_y,u,leg_mat,&
+    !                     weights,qds)
     IF(nu .gt. 0.0_dp) THEN
       CALL compute_laplacian(lap,qds,u,leg_mat,weights)
     END IF
     !Compute first stage in RK4
-    kstage(:,:,:,:,1) = grad_x + grad_y + nu*lap
+    ! kstage(:,:,:,:,1) = grad_x + grad_y + nu*lap
+    kstage(:,:,:,:,1) = nu*lap
 
     u = up + 0.5_dp*dt*kstage(:,:,:,:,1)
-    CALL compute_advection(grad_x,grad_y,u,leg_mat,&
-                        weights,qds)
+    ! CALL compute_advection(grad_x,grad_y,u,leg_mat,&
+    !                     weights,qds)
     IF(nu .gt. 0.0_dp) THEN
       CALL compute_laplacian(lap,qds,u,leg_mat,weights)
     END IF
     !Compute second stage in RK4
-    kstage(:,:,:,:,2) = grad_x + grad_y + nu*lap
+    ! kstage(:,:,:,:,2) = grad_x + grad_y + nu*lap
+    kstage(:,:,:,:,2) = nu*lap
 
     u = up + 0.5_dp*dt*kstage(:,:,:,:,2)
-    CALL compute_advection(grad_x,grad_y,u,leg_mat,&
-                        weights,qds)
+    ! CALL compute_advection(grad_x,grad_y,u,leg_mat,&
+    !                     weights,qds)
     IF(nu .gt. 0.0_dp) THEN
       CALL compute_laplacian(lap,qds,u,leg_mat,weights)
     END IF
     !Compute third stage in RK4
-    kstage(:,:,:,:,3) = grad_x + grad_y + nu*lap
+    ! kstage(:,:,:,:,3) = grad_x + grad_y + nu*lap
+    kstage(:,:,:,:,3) = nu*lap
 
     u = up + 0.5_dp*dt*kstage(:,:,:,:,3)
-    CALL compute_advection(grad_x,grad_y,u,leg_mat,&
-                        weights,qds)
+    ! CALL compute_advection(grad_x,grad_y,u,leg_mat,&
+    !                     weights,qds)
     IF(nu .gt. 0.0_dp) THEN
       CALL compute_laplacian(lap,qds,u,leg_mat,weights)
     END IF
     !Compute fourth stage in RK4
-    kstage(:,:,:,:,4) = grad_x + grad_y + nu*lap
+    ! kstage(:,:,:,:,4) = grad_x + grad_y + nu*lap
+    kstage(:,:,:,:,4) =  nu*lap
 
     !time step forward
     u = up + (dt/6.0_dp)*(kstage(:,:,:,:,1) + 2.0_dp*&
       kstage(:,:,:,:,2)+2.0_dp*kstage(:,:,:,:,3)+&
       kstage(:,:,:,:,4))
-    u(:,:,source_x,source_y) = u(:,:,source_x,source_y) + dt*S*strgth*(1 + COS(7.0_dp*pi*t))
+    ! u(:,:,source_x,source_y) = u(:,:,source_x,source_y) + dt*S*strgth
+
+    ! u(:,:,source_x,source_y) = u(:,:,source_x,source_y) + dt*S*strgth*(1 + COS(7.0_dp*pi*t))
 
     t = t + dt 
     it = it + 1

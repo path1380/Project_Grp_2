@@ -2,19 +2,19 @@ module problemsetup
   use type_defs
   implicit none
   integer, parameter :: nvar = 1
-  integer, parameter :: q = 4
+  integer, parameter :: q = 9
   integer, parameter :: nint = q+3
 
   !number of elements along each direction
-  integer, parameter :: nelemx = 100, nelemy = 100
+  integer, parameter :: nelemx = 10, nelemy = 10
   !the x and y coordinate of the source
-  integer, parameter :: source_x = 5, source_y = 5
-  real(kind = dp), parameter :: CFL = 0.1d0, tend = 2
+  integer, parameter :: source_x = 4, source_y = 4
+  real(kind = dp), parameter :: CFL = 0.001d0, tend = 1
   ! real(kind = dp), parameter :: tend = 1.d0
-  real(kind = dp), parameter :: nu = 0.01_dp, strgth = 1000000_dp
+  real(kind = dp), parameter :: nu = 1.0_dp, strgth = 15_dp
   real(kind = dp) :: bc(10:99,nvar)
 
-  integer, parameter :: nplot = 2, plot_freq = 300
+  integer, parameter :: nplot = 2, plot_freq = 100
   logical, parameter :: upwind = .true.
   logical, parameter :: plot = .true.
 
@@ -42,9 +42,9 @@ contains
     implicit none
     real(kind = dp) :: x,y
     real(kind = dp), parameter :: pi = acos(-1.d0)
-    init_u = 0.0_dp
+    ! init_u = 0.0_dp
     ! init_u = EXP(-36.0_dp*(x**2.0_dp + y**2.0_dp))
-    ! init_u = SIN(2.0_dp*pi*y)*SIN(2.0_dp*pi*x)
+    init_u = SIN(2.0_dp*pi*y)*SIN(2.0_dp*pi*x)
     ! init_u = (x**2.0_dp + y**2.0_dp)
     ! init_u = x**2.0_dp
     ! init_u = 5.0_dp*(y**2.0_dp)*(x**2.0_dp)

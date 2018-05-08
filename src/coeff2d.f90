@@ -1,6 +1,6 @@
 program coeff2d
 !This code currently computes the solution to 
-!an advection-diffusion equation with Dirichlet 
+!an advection-diffusion equation with periodic 
 !boundary conditions.
 !
 !CURRENT TASK: Add a source term to the equation.
@@ -191,11 +191,11 @@ program coeff2d
     end do
   end do 
 
-  !Compute source term 
-  CALL compute_source(qds(source_ind)%x(loc_ind,loc_ind),&
-        qds(source_ind)%y(loc_ind,loc_ind),&
-        qds(source_ind)%jac(loc_ind,loc_ind),leg_mat,S,&
-        qds(source_ind))
+  ! !Compute source term 
+  ! CALL compute_source(qds(source_ind)%x(loc_ind,loc_ind),&
+  !       qds(source_ind)%y(loc_ind,loc_ind),&
+  !       qds(source_ind)%jac(loc_ind,loc_ind),leg_mat,S,&
+  !       qds(source_ind))
 
   !Now let's double check the projection is 
   !working correctly for multiple elements
@@ -220,8 +220,8 @@ program coeff2d
   end do
 
   !print out max L2 error over all quads
-  write(*,*) 'Here is the error for projecting down to Legendre polys: \n'
-  write(*,*) MAXVAL(err_vec)
+  ! write(*,*) 'Here is the error for projecting down to Legendre polys: \n'
+  ! write(*,*) MAXVAL(err_vec)
 
   !We'll use this for our first time step
   lam_max = MAXVAL(ABS(approx_sol))
@@ -296,10 +296,11 @@ program coeff2d
   lap = 0.0_dp
   t = 0.0_dp
   it = 0
-
+  dt =  CFL*min(hx,hy)**2/real(q,dp)**2
+  
   !Here we will time step and collect the error at each
   !time step to see if we are running things correctly
-  DO WHILE (it < 1000) 
+  DO WHILE (it < 10000) 
     up = u
     CALL compute_advection(grad_x,grad_y,u,hx,hy,leg_mat,&
                         leg_der_mat,weights,qds,alpha)
@@ -307,7 +308,7 @@ program coeff2d
     !stupid small time steps to keep just 4-5 digits
     ! dt =  CFL*min(hx,hy)/real(q,dp)**2/lam_max
     ! if(t .eq. 0 ) then 
-      dt =  CFL*min(hx,hy)/real(q,dp)**2
+      ! dt =  CFL*min(hx,hy)/real(q,dp)**2
     ! ELSE 
     !   dt =  CFL*min(hx,hy)/real(q,dp)**2/alpha
     ! END IF
@@ -316,7 +317,9 @@ program coeff2d
       CALL compute_laplacian(lap,qds,u,leg_mat,weights)
     END IF
     !Compute first stage in RK4
-    kstage(:,:,:,:,1) = -1.0_dp*grad_x + -1.0_dp*grad_y + nu*lap
+    ! kstage(:,:,:,:,1) = grad_x + grad_y + nu*lap
+    kstage(:,:,:,:,1) = nu*lap
+
     u = up + 0.5_dp*dt*kstage(:,:,:,:,1)
     CALL compute_advection(grad_x,grad_y,u,hx,hy,leg_mat,&
                         leg_der_mat,weights,qds,alpha)
@@ -324,7 +327,9 @@ program coeff2d
       CALL compute_laplacian(lap,qds,u,leg_mat,weights)
     END IF
     !Compute second stage in RK4
-    kstage(:,:,:,:,2) = -1.0_dp*grad_x + -1.0_dp*grad_y + nu*lap
+    ! kstage(:,:,:,:,2) = grad_x + grad_y + nu*lap
+    kstage(:,:,:,:,2) =  nu*lap
+
     u = up + 0.5_dp*dt*kstage(:,:,:,:,2)
     CALL compute_advection(grad_x,grad_y,u,hx,hy,leg_mat,&
                         leg_der_mat,weights,qds,alpha)
@@ -332,7 +337,9 @@ program coeff2d
       CALL compute_laplacian(lap,qds,u,leg_mat,weights)
     END IF
     !Compute third stage in RK4
-    kstage(:,:,:,:,3) = -1.0_dp*grad_x + -1.0_dp*grad_y + nu*lap
+    ! kstage(:,:,:,:,3) = grad_x + grad_y + nu*lap
+    kstage(:,:,:,:,3) = nu*lap
+
     u = up + 0.5_dp*dt*kstage(:,:,:,:,3)
     CALL compute_advection(grad_x,grad_y,u,hx,hy,leg_mat,&
                         leg_der_mat,weights,qds,alpha)
@@ -340,7 +347,9 @@ program coeff2d
       CALL compute_laplacian(lap,qds,u,leg_mat,weights)
     END IF
     !Compute fourth stage in RK4
-    kstage(:,:,:,:,4) = -1.0_dp*grad_x + -1.0_dp*grad_y + nu*lap
+    ! kstage(:,:,:,:,4) = grad_x + grad_y + nu*lap
+    kstage(:,:,:,:,4) = nu*lap
+
     !time step forward
     u = up + (dt/6.0_dp)*(kstage(:,:,:,:,1) + 2.0_dp*&
       kstage(:,:,:,:,2)+2.0_dp*kstage(:,:,:,:,3)+&
@@ -726,14 +735,13 @@ contains
            !Differentiation matrix quadrature in r
            !Here we differentiate in x
            fint_x(iy) = sum(weights*qd%jac(:,iy)&
-             *P(iy,i)*P(:,j)*(DERP(iy,k)*P(:,l)*qd%rx(:,iy)+& 
-             DERP(:,l)*P(iy,k)*qd%sx(:,iy))) 
-
+             *P(:,k)*P(iy,l)*(DERP(:,i)*P(iy,j)*qd%rx(:,iy)+& 
+             P(:,i)*DERP(iy,j)*qd%sx(:,iy))) 
            !Differentiation matrix quadrature in r
            !Here we differentiate in y
            fint_y(iy) = sum(weights*qd%jac(:,iy)&
-             *P(iy,i)*P(:,j)*(DERP(iy,k)*P(:,l)*qd%ry(:,iy)+& 
-             DERP(:,l)*P(iy,k)*qd%sy(:,iy)))   
+             *P(:,k)*P(iy,l)*(DERP(:,i)*P(iy,j)*qd%ry(:,iy)+& 
+             P(:,i)*DERP(iy,j)*qd%sy(:,iy))) 
           end do
 
           ! Then integrate in s
@@ -790,10 +798,9 @@ contains
       real(dp) :: ub(0:nint,4,nelemx,nelemy),fb_star(0:nint,4,nelemx,nelemy),&
                   fb(0:nint,4,nelemx,nelemy)
       integer  :: i,j,k,l,i1,i2,sz1,sz2,ind,ny
-      real(dp) :: weights(0:nint),leg_mat(0:nint,0:q),leg_der_mat(0:nint,0:q),&
-                  true_sol(0:nint,0:nint), err_vec(nelemy*nelemx)
+      real(dp) :: weights(0:nint),leg_mat(0:nint,0:q),leg_der_mat(0:nint,0:q)
       real(dp) :: alpha,hx,hy,mode_c
-
+      ! real(dp) :: approx_sol(0:nint,0:nint)
       !Build the solution on the quadrature points
       do j = 1,nelemy
         do i = 1,nelemx 
@@ -832,18 +839,18 @@ contains
           ub(:,2,i,j) = u_loc(nint,:,i,j)
           ub(:,3,i,j) = u_loc(:,0,i,j)
           ub(:,4,i,j) = u_loc(:,nint,i,j)
-          !Dirichlet bdry conds in y
-          IF (j .eq. 1) THEN 
-            ub(:,3,i,j) = 0.0_dp
-          END IF 
-          IF (j .eq. ny) THEN
-            ub(:,4,i,j) = 0.0_dp
-          END IF
+          ! !Dirichlet bdry conds in y
+          ! IF (j .eq. 1) THEN 
+          !   ub(:,3,i,j) = 0.0_dp
+          ! END IF 
+          ! IF (j .eq. ny) THEN
+          !   ub(:,4,i,j) = 0.0_dp
+          ! END IF
         end do 
-        !Prescribe Dirichlet boundary conds.
-        !in x
-        ub(:,1,1,j) = 0.0_dp 
-        ub(:,2,nelemx,j) = 0.0_dp
+        ! !Prescribe Dirichlet boundary conds.
+        ! !in x
+        ! ub(:,1,1,j) = 0.0_dp 
+        ! ub(:,2,nelemx,j) = 0.0_dp
       end do 
 
       !Here (f(u))_x = u_x implies f(u) = u 
@@ -851,48 +858,70 @@ contains
       grad_x = 0.0_dp
       grad_y = 0.0_dp
 
-      !We will temporarily assume Dirichlet boundary conditions,
-      !Here we will use the Lax-Friedrichs flux and compute 
-      !the flux for r=-1,1
+      !We will use periodic boundary conditions here
       do j = 1, nelemy
         i = 1 
-        fb_star(:,1,i,j) = 0.5_dp*(1.0_dp - alpha)*ub(:,1,i,j)&
-           +0.5_dp*(1.0_dp+alpha)*ub(:,2,nelemx,j) !0 in our case
-        fb_star(:,2,i,j) = 0.5_dp*(1.0_dp + alpha)*ub(:,2,i,j)&
-           +0.5_dp*(1.0_dp-alpha)*ub(:,1,i+1,j)
+        ! fb_star(:,1,i,j) = 0.5_dp*(1.0_dp - alpha)*ub(:,1,i,j)&
+        !    +0.5_dp*(1.0_dp+alpha)*ub(:,2,nelemx,j) !0 in our case
+        ! fb_star(:,2,i,j) = 0.5_dp*(1.0_dp + alpha)*ub(:,2,i,j)&
+        !    +0.5_dp*(1.0_dp-alpha)*ub(:,1,i+1,j)
+        fb_star(:,1,i,j) = 0.5_dp*(ub(:,1,i,j) + ub(:,2,nelemx,j))
+        fb_star(:,2,i,j) = 0.5_dp*(ub(:,1,i+1,j) + ub(:,2,i,j))
         !the one above assumes we have at least 2 elements in x
         do i = 2,nelemx-1
-          fb_star(:,1,i,j) = 0.5_dp*(1.0_dp - alpha)*ub(:,1,i,j)&
-           +0.5_dp*(1.0_dp+alpha)*ub(:,2,i-1,j)
-          fb_star(:,2,i,j) = 0.5_dp*(1.0_dp + alpha)*ub(:,2,i,j)&
-           +0.5_dp*(1.0_dp-alpha)*ub(:,1,i+1,j)
+          ! fb_star(:,1,i,j) = 0.5_dp*(1.0_dp - alpha)*ub(:,1,i,j)&
+          !  +0.5_dp*(1.0_dp+alpha)*ub(:,2,i-1,j)
+          ! fb_star(:,2,i,j) = 0.5_dp*(1.0_dp + alpha)*ub(:,2,i,j)&
+          !  +0.5_dp*(1.0_dp-alpha)*ub(:,1,i+1,j)
+          fb_star(:,1,i,j) = 0.5_dp*(ub(:,1,i,j) + ub(:,2,i-1,j))
+          fb_star(:,2,i,j) = 0.5_dp*(ub(:,1,i+1,j) + ub(:,2,i,j))
         end do
         i = nelemx
-        fb_star(:,1,i,j) = 0.5_dp*(1.0_dp - alpha)*ub(:,1,i,j)&
-           +0.5_dp*(1.0_dp+alpha)*ub(:,2,i-1,j)
-        fb_star(:,2,i,j) = 0.5_dp*(1.0_dp + alpha)*ub(:,2,i,j)&
-           +0.5_dp*(1.0_dp-alpha)*ub(:,1,1,j) !should be 0
+        ! fb_star(:,1,i,j) = 0.5_dp*(1.0_dp - alpha)*ub(:,1,i,j)&
+        !    +0.5_dp*(1.0_dp+alpha)*ub(:,2,i-1,j)
+        ! fb_star(:,2,i,j) = 0.5_dp*(1.0_dp + alpha)*ub(:,2,i,j)&
+        !    +0.5_dp*(1.0_dp-alpha)*ub(:,1,1,j) !should be 0
+        fb_star(:,1,i,j) = 0.5_dp*(ub(:,1,i,j) + ub(:,2,i-1,j))
+        fb_star(:,2,i,j) = 0.5_dp*(ub(:,1,1,j) + ub(:,2,i,j))
       end do
+
+      ! write(*,*) fb_star(:,1,1,1)
+      ! write(*,*) fb_star(:,2,1,1)
 
       !Now for s=-1,1
       do i = 1,nelemx
+      !   j = 1 
+      !   fb_star(:,3,i,j) = 0.5_dp*(1.0_dp - alpha)*ub(:,3,i,j)&
+      !      +0.5_dp*(1.0_dp+alpha)*ub(:,4,i,nelemy) !0 in our case
+      !   fb_star(:,4,i,j) = 0.5_dp*(1.0_dp + alpha)*ub(:,4,i,j)&
+      !      +0.5_dp*(1.0_dp-alpha)*ub(:,3,i,j+1) 
+      !   do j = 2,nelemy-1 
+      !     fb_star(:,3,i,j) = 0.5_dp*(1.0_dp - alpha)*ub(:,3,i,j)&
+      !      +0.5_dp*(1.0_dp+alpha)*ub(:,4,i,j-1)
+      !     fb_star(:,4,i,j) = 0.5_dp*(1.0_dp + alpha)*ub(:,4,i,j)&
+      !      +0.5_dp*(1.0_dp-alpha)*ub(:,3,i,j+1)        
+      !   end do
+      !   j = nelemy
+      !   fb_star(:,3,i,j) = 0.5_dp*(1.0_dp - alpha)*ub(:,3,i,j)&
+      !      +0.5_dp*(1.0_dp+alpha)*ub(:,4,i,j-1)
+      !   fb_star(:,4,i,j) = 0.5_dp*(1.0_dp + alpha)*ub(:,4,i,j)&
+      !      +0.5_dp*(1.0_dp-alpha)*ub(:,3,i,1) !should be 0 
+      ! end do
+
         j = 1 
-        fb_star(:,3,i,j) = 0.5_dp*(1.0_dp - alpha)*ub(:,3,i,j)&
-           +0.5_dp*(1.0_dp+alpha)*ub(:,4,i,nelemy) !0 in our case
-        fb_star(:,4,i,j) = 0.5_dp*(1.0_dp + alpha)*ub(:,4,i,j)&
-           +0.5_dp*(1.0_dp-alpha)*ub(:,3,i,j+1) 
+        fb_star(:,3,i,j) = 0.5_dp*(ub(:,3,i,j)+ub(:,4,i,nelemy))
+        fb_star(:,4,i,j) = 0.5_dp*(ub(:,4,i,j)+ ub(:,3,i,j+1))
         do j = 2,nelemy-1 
-          fb_star(:,3,i,j) = 0.5_dp*(1.0_dp - alpha)*ub(:,3,i,j)&
-           +0.5_dp*(1.0_dp+alpha)*ub(:,4,i,j-1)
-          fb_star(:,4,i,j) = 0.5_dp*(1.0_dp + alpha)*ub(:,4,i,j)&
-           +0.5_dp*(1.0_dp-alpha)*ub(:,3,i,j+1)        
+          fb_star(:,3,i,j) = 0.5_dp*(ub(:,3,i,j)+ub(:,4,i,j-1))
+          fb_star(:,4,i,j) = 0.5_dp*(ub(:,4,i,j)+ub(:,3,i,j+1))        
         end do
         j = nelemy
-        fb_star(:,3,i,j) = 0.5_dp*(1.0_dp - alpha)*ub(:,3,i,j)&
-           +0.5_dp*(1.0_dp+alpha)*ub(:,4,i,j-1)
-        fb_star(:,4,i,j) = 0.5_dp*(1.0_dp + alpha)*ub(:,4,i,j)&
-           +0.5_dp*(1.0_dp-alpha)*ub(:,3,i,1) !should be 0 
+        fb_star(:,3,i,j) = 0.5_dp*(ub(:,3,i,j)+ub(:,4,i,j-1))
+        fb_star(:,4,i,j) = 0.5_dp*(ub(:,4,i,j)+ub(:,3,i,1)) 
       end do
+      ! write(*,*) fb_star(:,1,1,2)
+      ! write(*,*) fb_star(:,2,1,2)
+      ! stop 172
 
       do j = 1,nelemy 
         do i = 1,nelemx 
@@ -911,10 +940,27 @@ contains
              !  leg_mat(nint,k)*leg_mat(:,l))&
              ! -sum(qds(ind)%sy(0,:)*weights*fb_star(:,1,i,j)*&
              !  leg_mat(0,k)*leg_mat(:,l))
-             +sum(weights*fb_star(:,2,i,j)*&
-              leg_mat(nint,k)*leg_mat(:,l)/qds(ind)%sy(nint,:))&
-             -sum(weights*fb_star(:,1,i,j)*&
-              leg_mat(0,k)*leg_mat(:,l)/qds(ind)%sy(0,:))
+
+             !THIS IS THE SECOND VERSION
+             ! +sum(qds(ind)%dl_face(:,4)*weights*fb_star(:,2,i,j)*&
+             !  leg_mat(nint,k)*leg_mat(:,l))&
+             ! -sum(qds(ind)%dl_face(:,2)*weights*fb_star(:,1,i,j)*&
+             !  leg_mat(0,k)*leg_mat(:,l))
+
+             !ATTEMPT 3
+             -sum(qds(ind)%dl_face(:,4)*weights*fb_star(:,2,i,j)*&
+              leg_mat(nint,k)*leg_mat(:,l))&
+             +sum(qds(ind)%dl_face(:,2)*weights*fb_star(:,1,i,j)*&
+              leg_mat(0,k)*leg_mat(:,l))
+            !  if(ind .eq. 5) then 
+            !   if((k .eq. 0) .AND. (l .eq. 0)) then
+            !     write(*,*) sum(qds(ind)%dl_face(:,4)*weights*fb_star(:,2,i,j)*&
+            !   leg_mat(nint,k)*leg_mat(:,l))
+            !     write(*,*) sum(qds(ind)%dl_face(:,2)*weights*fb_star(:,1,i,j)*&
+            !   leg_mat(0,k)*leg_mat(:,l))
+            !     stop 928
+            !   end if 
+            ! end if
             end do
           end do 
 
@@ -935,12 +981,13 @@ contains
              !  leg_mat(:,k)*leg_mat(nint,l))&
              ! -sum(qds(ind)%rx(:,0)*weights*fb_star(:,3,i,j)*&
              !  leg_mat(:,k)*leg_mat(0,l))
-             +sum(weights*fb_star(:,4,i,j)*&
-              leg_mat(:,k)*leg_mat(nint,l)/qds(ind)%rx(:,nint))&
-             -sum(weights*fb_star(:,3,i,j)*&
-              leg_mat(:,k)*leg_mat(0,l)/qds(ind)%rx(:,0))
+             -sum(qds(ind)%dl_face(:,1)*weights*fb_star(:,4,i,j)*&
+              leg_mat(:,k)*leg_mat(nint,l))&
+             +sum(qds(ind)%dl_face(:,3)*weights*fb_star(:,3,i,j)*&
+              leg_mat(:,k)*leg_mat(0,l))
             end do
           end do 
+
 
           !take a single derivative in y (might need to 
           !multiply the matrix by a constant to get a correct
@@ -950,7 +997,42 @@ contains
           call DGETRS('N',sz2,1,qds(ind)%M,sz2,qds(ind)%IPIV,grad_y(:,:,i,j),sz2,INFO)  
         end do
       end do
-      ! alpha = MAXVAL(ABS(u_loc(:,:,:,:)))         
+
+      grad_y = -1.0_dp*grad_y
+      grad_x = -1.0_dp*grad_x
+      ! !Now let us double check that the derivatives are computed 
+      ! !correctly
+
+      ! err_vec_lap = 0.0_dp
+      ! do i2 = 2,2
+      !   do i1 = 2,2
+      !     ind = i1 + (i2-1)*nelemx
+      !     !Let us now check the derivative
+      !     !build true solution on the given grid
+      !     do j = 0,n_gll-1
+      !       do i =0,n_gll-1
+
+      !         true_sol(i,j) = 3.0_dp*pi*COS(3.0_dp*pi*qds(ind)%y(i,j))
+      !         ! true_sol(i,j) = -72.0_dp*qds(ind)%y(i,j)*init_u(qds(ind)%x(i,j),qds(ind)%y(i,j))
+
+      !         !build approximation
+      !         approx_sol(i,j) = 0.0_dp
+      !         do l=0,q
+      !           do k=0,q 
+      !             approx_sol(i,j) = approx_sol(i,j) + grad_y(k,l,i1,i2)*leg_mat(i,k)*leg_mat(j,l)
+      !           end do 
+      !         end do 
+      !       end do 
+      !     end do
+      !     err_vec_lap(ind) = MAXVAL(ABS(true_sol - approx_sol))
+      !     ! if (ind .eq. 1) then
+      !     !   write(*,*) qds(ind)%sy(0,:)
+      !     ! end if
+      !   end do 
+      !   write(*,*) err_vec_lap(5)
+      !   stop 09876
+      ! end do
+        
     end subroutine compute_advection
 
 
@@ -983,43 +1065,47 @@ contains
                   lap(0:q,0:q,nelemx,nelemy),u(0:q,0:q,nelemx,nelemy)
       real(dp) :: ub(0:nint,4,nelemx,nelemy),gradb(0:nint,4,nelemx,nelemy)
       integer  :: i,j,k,l,i1,i2,sz1,sz2,ind
-      real(dp) :: weights(0:nint),leg_mat(0:nint,0:q)
+      real(dp) :: weights(0:nint),leg_mat(0:nint,0:q),err_vec_lap(nelemy*nelemx)
+      real(dp) :: true_sol(0:nint,0:nint), approx_sol(0:nint,0:nint)
       !implicitly assume nvar = 1 since it is in our case
-     
+      
+      ! write(*,*) 'Here are the weights: '
       ! Build u on the boundary 1,2,3,4 are x = -1, x = 1, y = -1, y = 1.
       do j = 1,nelemy
         do i = 1,nelemx
          ub(:,:,i,j) = 0.0_dp
          do i2 = 0,q
           do i1 = 0,q
-           ub(:,1,i,j) = ub(:,1,i,j) + u(i1,i2,i,j)*leg_mat(1,i1)*leg_mat(:,i2)
+           ub(:,1,i,j) = ub(:,1,i,j) + u(i1,i2,i,j)*leg_mat(0,i1)*leg_mat(:,i2)
            ub(:,2,i,j) = ub(:,2,i,j) + u(i1,i2,i,j)*leg_mat(nint,i1)*leg_mat(:,i2)
-           ub(:,3,i,j) = ub(:,3,i,j) + u(i1,i2,i,j)*leg_mat(:,i1)*leg_mat(1,i2)
+           ub(:,3,i,j) = ub(:,3,i,j) + u(i1,i2,i,j)*leg_mat(:,i1)*leg_mat(0,i2)
            ub(:,4,i,j) = ub(:,4,i,j) + u(i1,i2,i,j)*leg_mat(:,i1)*leg_mat(nint,i2)
           end do
          end do
         end do
        end do
 
-      ! To start with: Dirichlet boundary conditions in x
+      !Periodic boundary conditions in x
       do j = 1,nelemy
        ! Use the left side flux
        do i = 1,nelemx-1
         ub(:,2,i,j) = ub(:,1,i+1,j)
        end do
+       ! ub(:,1,1,j) = ub(:,2,nelemx,j)
        ub(:,2,nelemx,j) = 0.0_dp
        ub(:,1,1,j) = 0.0_dp
       end do
 
-      ! Dirichlet boundary conditions in the y-direction
+      !Periodic boundary conditions in y
       do i = 1,nelemx
        do j = 1,nelemy-1
         ub(:,4,i,j) = ub(:,3,i,j+1)
        end do
+       ! ub(:,3,i,1) = ub(:,4,i,nelemy)
        ub(:,4,i,nelemy) =  0.0_dp
        ub(:,3,i,1)      =  0.0_dp
       end do
-      
+
       !Needed for BLAS's DGEMV routine
       sz1 = 1
       sz2 = (q+1)**2
@@ -1035,13 +1121,17 @@ contains
           do l =0,q
            do k = 0,q
             gradx(k,l,i,j) = gradx(k,l,i,j) &
-             +sum(qds(ind)%ry(nint,:)*weights*ub(:,2,i,j)*leg_mat(nint,k)*leg_mat(:,l))&
-             -sum(qds(ind)%ry(0,:)*weights*ub(:,1,i,j)*leg_mat(0,k)*leg_mat(:,l))
+             ! +sum(qds(ind)%ry(nint,:)*weights*ub(:,2,i,j)*leg_mat(nint,k)*leg_mat(:,l))&
+             ! -sum(qds(ind)%ry(0,:)*weights*ub(:,1,i,j)*leg_mat(0,k)*leg_mat(:,l))
+             +sum(qds(ind)%dl_face(:,4)*weights*ub(:,2,i,j)*&
+              leg_mat(nint,k)*leg_mat(:,l))&
+             -sum(qds(ind)%dl_face(:,2)*&
+              weights*ub(:,1,i,j)*leg_mat(0,k)*leg_mat(:,l))
             end do
           end do   
 
           !take a single derivative in x
-          call DGEMV('N',sz2,sz2,1.0_dp,qds(ind)%Diff_x,sz2,&
+          call DGEMV('N',sz2,sz2,-1.0_dp,qds(ind)%Diff_x,sz2,&
                u(:,:,i,j),step,1.0_dp,gradx(:,:,i,j),step)
           call DGETRS('N',sz2,1,qds(ind)%M,sz2,qds(ind)%IPIV,gradx(:,:,i,j),sz2,INFO)
 
@@ -1050,18 +1140,59 @@ contains
           do l =0,q
            do k = 0,q
             grady(k,l,i,j) = &
-             +sum(qds(ind)%sx(:,nint)*weights*ub(:,4,i,j)*leg_mat(:,k)*leg_mat(nint,l))&
-             -sum(qds(ind)%sx(:,0)*weights*ub(:,3,i,j)*leg_mat(:,k)*leg_mat(0,l))
+             ! +sum(qds(ind)%sx(:,nint)*weights*ub(:,4,i,j)*leg_mat(:,k)*leg_mat(nint,l))&
+             ! -sum(qds(ind)%sx(:,0)*weights*ub(:,3,i,j)*leg_mat(:,k)*leg_mat(0,l))
+             +sum(qds(ind)%dl_face(:,1)*&
+              weights*ub(:,4,i,j)*leg_mat(:,k)*leg_mat(nint,l))&
+             -sum(qds(ind)%dl_face(:,3)*&
+              weights*ub(:,3,i,j)*leg_mat(:,k)*leg_mat(0,l))
             end do
           end do 
 
           !take a single derivative in y
-          call DGEMV('N',sz2,sz2,1.0_dp,qds(ind)%Diff_y,sz2,&
+          call DGEMV('N',sz2,sz2,-1.0_dp,qds(ind)%Diff_y,sz2,&
                u(:,:,i,j),step,1.0_dp,grady(:,:,i,j),step)
           call DGETRS('N',sz2,1,qds(ind)%M,sz2,qds(ind)%IPIV,grady(:,:,i,j),sz2,INFO)
         end do 
       end do
 
+      !Swap the signs to keep it correct
+      grad_x = -1.0_dp*grad_x
+      grad_y = -1.0_dp*grad_y
+      ! !Now let us double check that the derivatives are computed 
+      ! !correctly
+      ! ! grad_x = -1.0_dp*grad_x
+      ! err_vec_lap = 0.0_dp
+      ! do i2 = 2,2
+      !   do i1 = 2,2
+      !     ind = i1 + (i2-1)*nelemx
+      !     !Let us now check the derivative
+      !     !build true solution on the given grid
+      !     do j = 0,n_gll-1
+      !       do i =0,n_gll-1
+
+      !         true_sol(i,j) = 3.0_dp*pi*COS(3.0_dp*pi*qds(ind)%y(i,j))
+              
+      !         !build approximation
+      !         approx_sol(i,j) = 0.0_dp
+      !         do l=0,q
+      !           do k=0,q 
+      !             approx_sol(i,j) = approx_sol(i,j) + grad_y(k,l,i1,i2)*leg_mat(i,k)*leg_mat(j,l)
+      !           end do 
+      !         end do 
+      !       end do 
+      !     end do
+      !     err_vec_lap(ind) = MAXVAL(ABS(true_sol - approx_sol))
+      !     ! if (ind .eq. 1) then
+      !     !   write(*,*) qds(ind)%sy(0,:)
+      !     ! end if
+      !   end do 
+      ! end do
+      ! write(*,*) err_vec_lap(5)
+      ! ! write(*,*) approx_sol
+      ! stop 827
+
+      ! =================================================== !
       !Now we build the derivatives on the entire grid and 
       !proceed to build the Laplacian
       do j = 1,nelemy
@@ -1089,6 +1220,7 @@ contains
        do i = 2,nelemx
         gradb(:,1,i,j) = gradb(:,2,i-1,j)
        end do
+       ! gradb(:,1,1,j) = ub(:,2,nelemx,j)
       end do
       ! gradb(:,1,1,:) = gradb(:,2,nelemx,:)
 
@@ -1096,6 +1228,7 @@ contains
        do j = 2,nelemy
         gradb(:,3,i,j) = gradb(:,4,i,j-1)
        end do
+       ! gradb(:,3,i,1) = gradb(:,4,i,nelemy)
       end do
 
       do j = 1,nelemy
@@ -1106,23 +1239,67 @@ contains
           do l=0,q
             do k =0,q
               lap(k,l,i,j) = &
-            + sum(qds(ind)%ry(nint,:)*weights*gradb(:,2,i,j)*leg_mat(nint,k)*leg_mat(:,l))&
-            - sum(qds(ind)%ry(0,:)*weights*gradb(:,1,i,j)*leg_mat(0,k)*leg_mat(:,l)) &
-            + sum(qds(ind)%sx(:,nint)*weights*gradb(:,4,i,j)*leg_mat(:,k)*leg_mat(nint,l))&
-            - sum(qds(ind)%sx(:,0)*weights*gradb(:,3,i,j)*leg_mat(:,k)*leg_mat(0,l))
+            ! + sum(qds(ind)%ry(nint,:)*weights*gradb(:,2,i,j)*leg_mat(nint,k)*leg_mat(:,l))&
+            ! - sum(qds(ind)%ry(0,:)*weights*gradb(:,1,i,j)*leg_mat(0,k)*leg_mat(:,l)) &
+            ! + sum(qds(ind)%sx(:,nint)*weights*gradb(:,4,i,j)*leg_mat(:,k)*leg_mat(nint,l))&
+            ! - sum(qds(ind)%sx(:,0)*weights*gradb(:,3,i,j)*leg_mat(:,k)*leg_mat(0,l))
+            + sum(qds(ind)%dl_face(:,4)*weights*gradb(:,2,i,j)*&
+              leg_mat(nint,k)*leg_mat(:,l))&
+            - sum(qds(ind)%dl_face(:,2)*weights*gradb(:,1,i,j)*&
+              leg_mat(0,k)*leg_mat(:,l)) &
+            + sum(qds(ind)%dl_face(:,1)*&
+              weights*gradb(:,4,i,j)*leg_mat(:,k)*leg_mat(nint,l))&
+            - sum(qds(ind)%dl_face(:,3)*weights*gradb(:,3,i,j)&
+              *leg_mat(:,k)*leg_mat(0,l))
             end do 
           end do 
 
           !Add a derivative in x
-          call DGEMV('N',sz2,sz2,1.0_dp,qds(ind)%Diff_x,sz2,&
+          call DGEMV('N',sz2,sz2,-1.0_dp,qds(ind)%Diff_x,sz2,&
                gradx(:,:,i,j),step,1.0_dp,lap(:,:,i,j),step)
           !Add a derivative in y
-          call DGEMV('N',sz2,sz2,1.0_dp,qds(ind)%Diff_y,sz2,&
+          call DGEMV('N',sz2,sz2,-1.0_dp,qds(ind)%Diff_y,sz2,&
                grady(:,:,i,j),step,1.0_dp,lap(:,:,i,j),step)
           !Backsolve the mass matrix to get coefficients of Laplacian
           call DGETRS('N',sz2,1,qds(ind)%M,sz2,qds(ind)%IPIV,lap(:,:,i,j),sz2,INFO)
         end do 
       end do
+
+      ! ! lap = -1.0_dp*lap
+      ! !Now let us double check that the derivatives are computed 
+      ! !correctly
+      ! ! grad_x = -1.0_dp*grad_x
+      ! err_vec_lap = 0.0_dp
+      ! ! true_sol = 20.0_dp
+      ! do i2 = 2,2
+      !   do i1 = 2,2
+      !     ind = i1 + (i2-1)*nelemx
+      !     !Let us now check the derivative
+      !     !build true solution on the given grid
+      !     do j = 0,n_gll-1
+      !       do i =0,n_gll-1
+
+      !         true_sol(i,j) = -18.0_dp*pi**2.0_dp*(SIN(3.0_dp*pi*qds(ind)%y(i,j))*&
+      !           COS(3.0_dp*pi*qds(ind)%x(i,j)))
+              
+      !         !build approximation
+      !         approx_sol(i,j) = 0.0_dp
+      !         do l=0,q
+      !           do k=0,q 
+      !             approx_sol(i,j) = approx_sol(i,j) + lap(k,l,i1,i2)*leg_mat(i,k)*leg_mat(j,l)
+      !           end do 
+      !         end do 
+      !       end do 
+      !     end do
+      !     err_vec_lap(ind) = MAXVAL(ABS(true_sol - approx_sol))
+      !     ! if (ind .eq. 1) then
+      !     !   write(*,*) qds(ind)%sy(0,:)
+      !     ! end if
+      !   end do 
+      ! end do
+      ! write(*,*) err_vec_lap(5)
+      ! ! write(*,*) approx_sol
+      ! stop 827
     end subroutine compute_laplacian
 
     subroutine compute_source(xs,ys,jac,leg_mat,S,qds)
